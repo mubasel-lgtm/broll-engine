@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+function getSupabase() {
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+}
 
 export async function POST(req: NextRequest) {
   const formData = await req.formData()
@@ -19,7 +18,7 @@ export async function POST(req: NextRequest) {
   const filename = `product_${productId}_${Date.now()}.png`
 
   // Upload to Supabase Storage
-  const { error: uploadError } = await supabase.storage
+  const { error: uploadError } = await getSupabase().storage
     .from('product-images')
     .upload(filename, buffer, { contentType: file.type, upsert: true })
 
@@ -27,10 +26,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: uploadError.message }, { status: 500 })
   }
 
-  const { data: urlData } = supabase.storage.from('product-images').getPublicUrl(filename)
+  const { data: urlData } = getSupabase().storage.from('product-images').getPublicUrl(filename)
 
   // Update product record
-  await supabase.from('products').update({ image_url: urlData.publicUrl }).eq('id', parseInt(productId))
+  await getSupabase().from('products').update({ image_url: urlData.publicUrl }).eq('id', parseInt(productId))
 
   return NextResponse.json({ success: true, image_url: urlData.publicUrl })
 }

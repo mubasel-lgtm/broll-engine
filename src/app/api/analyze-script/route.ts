@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-const supabase = createClient(
+function getSupabase() { return createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+)}
 
 const GEMINI_KEY = 'AIzaSyCO2wpYY8br2mBOihZq8BUpmEPSavI4a_A'
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`
@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
   const { script } = await req.json()
 
   // Step 1: Get ALL clips from DB
-  const { data: allClips } = await supabase
+  const { data: allClips } = await getSupabase()
     .from('clips')
     .select('id, filename, description, dr_function, tags, mood, setting, has_product, has_person, person_gender, thumbnail_url, drive_url, reusability, camera_movement')
 

@@ -8,10 +8,9 @@ const EVOLINK_POLL = 'https://api.evolink.ai/v1/tasks'
 const GEMINI_KEY = 'AIzaSyCO2wpYY8br2mBOihZq8BUpmEPSavI4a_A'
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+function getSupabase() {
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+}
 
 export async function POST(req: NextRequest) {
   const { image_base64, script_line, dr_function } = await req.json()
@@ -24,7 +23,7 @@ export async function POST(req: NextRequest) {
   const filename = `frame_${Date.now()}.jpg`
   const buffer = Buffer.from(image_base64, 'base64')
 
-  const { error: uploadError } = await supabase.storage
+  const { error: uploadError } = await getSupabase().storage
     .from('product-images')
     .upload(filename, buffer, { contentType: 'image/jpeg', upsert: true })
 
@@ -32,7 +31,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Upload failed: ${uploadError.message}` }, { status: 500 })
   }
 
-  const { data: urlData } = supabase.storage.from('product-images').getPublicUrl(filename)
+  const { data: urlData } = getSupabase().storage.from('product-images').getPublicUrl(filename)
   const imageUrl = urlData.publicUrl
 
   // Step 2: Generate motion prompt with Gemini
@@ -96,14 +95,14 @@ Return ONLY the motion prompt text.` }] }],
       const urlMatch = fullStr.match(/https?:\/\/[^\s"\\]+\.mp4[^\s"\\]*/)
       if (urlMatch) {
         // Cleanup temp file
-        await supabase.storage.from('product-images').remove([filename])
+        await getSupabase().storage.from('product-images').remove([filename])
         return NextResponse.json({ success: true, video_url: urlMatch[0], motion_prompt: motionPrompt })
       }
       return NextResponse.json({ error: 'No video URL in completed response' }, { status: 500 })
     }
 
     if (status === 'failed') {
-      await supabase.storage.from('product-images').remove([filename])
+      await getSupabase().storage.from('product-images').remove([filename])
       return NextResponse.json({ error: pollData.error?.message || 'Video generation failed' }, { status: 500 })
     }
   }
