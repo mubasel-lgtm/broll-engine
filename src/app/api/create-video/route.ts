@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-const EVOLINK_KEY = 'sk-CXcdUWPipGTgdk5fA51SEmjpJjarI1nz1FRge8MZOix4jNxa'
+const EVOLINK_KEY = process.env.EVOLINK_KEY!
 const EVOLINK_URL = 'https://api.evolink.ai/v1/videos/generations'
 const EVOLINK_POLL = 'https://api.evolink.ai/v1/tasks'
 
-const GEMINI_KEY = 'AIzaSyCO2wpYY8br2mBOihZq8BUpmEPSavI4a_A'
+const GEMINI_KEY = process.env.GEMINI_KEY!
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`
 
 function getSupabase() {
