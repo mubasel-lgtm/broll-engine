@@ -18,6 +18,12 @@ export default function ClipsPage() {
   const [loading, setLoading] = useState(true)
   const [total, setTotal] = useState(0)
   const [previewClip, setPreviewClip] = useState<Clip | null>(null)
+  const [showUpload, setShowUpload] = useState(false)
+  const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const [uploadPreview, setUploadPreview] = useState<string | null>(null)
+  const [uploadBrand, setUploadBrand] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const [uploadResult, setUploadResult] = useState<{ success: boolean; message: string } | null>(null)
 
   useEffect(() => {
     supabase.from('brands').select('*').order('name').then(({ data }) => setBrands(data || []))
@@ -78,6 +84,47 @@ export default function ClipsPage() {
     return `https://drive.google.com/file/d/${match[1]}/preview`
   }
 
+  async function handleUploadClip() {
+    if (!uploadFile || !uploadBrand) return
+    setUploading(true)
+    setUploadResult(null)
+    try {
+      const reader = new FileReader()
+      const base64 = await new Promise<string>((resolve) => {
+        reader.onload = () => resolve((reader.result as string).split(',')[1])
+        reader.readAsDataURL(uploadFile)
+      })
+      const isVideo = uploadFile.type.startsWith('video/')
+      const resp = await fetch('/api/categorize-clip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          image_base64: base64,
+          filename: uploadFile.name,
+          brand: uploadBrand,
+          filetype: isVideo ? 'video' : 'image',
+        })
+      })
+      const data = await resp.json()
+      if (data.success) {
+        setUploadResult({ success: true, message: `Clip categorized and saved: ${data.category.dr_function} — ${data.category.mood}` })
+        loadClips()
+        setTimeout(() => {
+          setShowUpload(false)
+          setUploadFile(null)
+          setUploadPreview(null)
+          setUploadBrand('')
+          setUploadResult(null)
+        }, 2000)
+      } else {
+        setUploadResult({ success: false, message: data.error || 'Upload failed' })
+      }
+    } catch (e) {
+      setUploadResult({ success: false, message: 'Network error' })
+    }
+    setUploading(false)
+  }
+
   const drBadgeColor = (fn: string) => {
     switch (fn) {
       case 'PROBLEM': return 'bg-red-500/10 text-red-600 border-red-500/20'
@@ -123,6 +170,13 @@ export default function ClipsPage() {
               {total} clips indexed across all brands
             </p>
           </div>
+          <button
+            onClick={() => setShowUpload(true)}
+            className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white text-[13px] font-medium rounded-xl hover:bg-indigo-700 transition-colors shadow-sm"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Upload Clip
+          </button>
         </div>
 
         {/* Filters */}
@@ -245,6 +299,86 @@ export default function ClipsPage() {
           </>
         )}
       </main>
+
+      {/* Upload Clip Modal */}
+      {showUpload && (
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-8" onClick={() => { if (!uploading) setShowUpload(false) }}>
+          <div className="bg-white border border-gray-200 rounded-2xl max-w-lg w-full shadow-2xl animate-fade-in" onClick={e => e.stopPropagation()}>
+            <div className="p-8">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-[18px] font-semibold tracking-tight">Upload New Clip</h3>
+                <button onClick={() => { if (!uploading) setShowUpload(false) }} className="w-8 h-8 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-all">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+
+              {/* File Drop */}
+              <div className="mb-5">
+                <label className="text-sm font-medium text-gray-500 block mb-2">Video or Image File</label>
+                {uploadPreview ? (
+                  <div className="relative rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
+                    {uploadFile?.type.startsWith('video/') ? (
+                      <video src={uploadPreview} controls className="w-full aspect-video object-contain" playsInline />
+                    ) : (
+                      <img src={uploadPreview} alt="" className="w-full aspect-video object-contain" />
+                    )}
+                    <button onClick={() => { setUploadFile(null); setUploadPreview(null) }}
+                      className="absolute top-2 right-2 w-7 h-7 rounded-lg bg-white/90 border border-gray-200 flex items-center justify-center text-gray-500 hover:text-red-500 transition-colors shadow-sm">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-xl py-10 cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/30 transition-all">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="text-gray-300 mb-3"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    <span className="text-sm text-gray-400">Click to select file</span>
+                    <span className="text-xs text-gray-300 mt-1">MP4, MOV, JPG, PNG</span>
+                    <input type="file" accept="video/*,image/*" className="hidden" onChange={e => {
+                      const f = e.target.files?.[0]
+                      if (f) { setUploadFile(f); setUploadPreview(URL.createObjectURL(f)) }
+                    }} />
+                  </label>
+                )}
+              </div>
+
+              {/* Brand */}
+              <div className="mb-6">
+                <label className="text-sm font-medium text-gray-500 block mb-2">Brand</label>
+                <select value={uploadBrand} onChange={e => setUploadBrand(e.target.value)}
+                  className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all">
+                  <option value="">Select brand...</option>
+                  {brands.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+                </select>
+              </div>
+
+              {/* Result Message */}
+              {uploadResult && (
+                <div className={`mb-4 px-4 py-3 rounded-xl text-sm font-medium ${
+                  uploadResult.success ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'
+                }`}>
+                  {uploadResult.message}
+                </div>
+              )}
+
+              {/* Actions */}
+              <button
+                onClick={handleUploadClip}
+                disabled={!uploadFile || !uploadBrand || uploading}
+                className="w-full py-3 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {uploading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                    Categorizing with AI...
+                  </>
+                ) : (
+                  'Upload & Auto-Categorize'
+                )}
+              </button>
+              <p className="text-xs text-gray-400 text-center mt-3">Gemini will automatically categorize the clip (DR function, tags, mood, etc.)</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Video Preview Modal */}
       {previewClip && (

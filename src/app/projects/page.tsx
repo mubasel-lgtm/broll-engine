@@ -54,6 +54,11 @@ export default function ProjectsPage() {
   const [generatedVideos, setGeneratedVideos] = useState<Record<number, string>>({})
   const [productImageB64, setProductImageB64] = useState<string | null>(null)
   const [history, setHistory] = useState<Array<{id: number; name: string; script: string; status: string; created_at: string; brand_name?: string; product_name?: string}>>([])
+  // Rejection feedback state
+  const [rejectModal, setRejectModal] = useState<{ lineNumber: number; clipId?: number; scriptLine: string; drFunction: string } | null>(null)
+  const [rejectReason, setRejectReason] = useState('')
+  const [rejectNote, setRejectNote] = useState('')
+  const [savingReject, setSavingReject] = useState(false)
 
   type HistoryProject = {id: number; name: string; script: string; status: string; created_at: string; brand_name?: string; product_name?: string}
 
@@ -135,7 +140,7 @@ export default function ProjectsPage() {
     const resp = await fetch('/api/analyze-script', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ script })
+      body: JSON.stringify({ script, product_id: selectedProduct, brand_id: brand?.id || selectedBrand })
     })
     const data = await resp.json()
     if (data.lines) {
@@ -181,6 +186,37 @@ export default function ProjectsPage() {
     setSelectedProduct(null)
     const prods = products.filter(p => p.brand_id === brandId)
     if (prods.length === 1) setSelectedProduct(prods[0].id)
+  }
+
+  async function submitRejection() {
+    if (!rejectModal || !rejectReason) return
+    setSavingReject(true)
+    try {
+      const prod = products.find(p => p.id === selectedProduct)
+      const brand = prod ? brands.find(b => b.id === prod.brand_id) : null
+      await fetch('/api/save-learning', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          product_id: selectedProduct,
+          brand_id: brand?.id || selectedBrand,
+          clip_id: rejectModal.clipId || null,
+          script_line: rejectModal.scriptLine,
+          dr_function: rejectModal.drFunction,
+          rejection_reason: rejectReason,
+          editor_note: rejectNote || null,
+        })
+      })
+    } catch (e) {
+      console.error('Failed to save rejection:', e)
+    }
+    // Proceed with the actual rejection (remove image)
+    setGeneratedImages(prev => { const n = { ...prev }; delete n[rejectModal.lineNumber]; return n })
+    setGeneratedStatus(prev => { const n = { ...prev }; delete n[rejectModal.lineNumber]; return n })
+    setSavingReject(false)
+    setRejectModal(null)
+    setRejectReason('')
+    setRejectNote('')
   }
 
   return (
@@ -519,14 +555,25 @@ export default function ProjectsPage() {
                                       if (data.success) {
                                         setGeneratedVideos(prev => ({ ...prev, [line.line_number]: data.video_url }))
                                         setGeneratedStatus(prev => ({ ...prev, [line.line_number]: 'video_done' }))
+                                        // Auto-save to clip library with categorization
+                                        fetch('/api/categorize-clip', {
+                                          method: 'POST',
+                                          headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({
+                                            image_base64: imgData,
+                                            video_url: data.video_url,
+                                            filename: `ai_broll_${line.line_number}_${Date.now()}.mp4`,
+                                            brand: selectedBrandObj?.name || 'Uncategorized',
+                                            filetype: 'video',
+                                          })
+                                        }).catch(e => console.error('Auto-categorize failed:', e))
                                       } else {
                                         setGeneratedStatus(prev => ({ ...prev, [line.line_number]: 'video_failed' }))
                                       }
                                     } catch { setGeneratedStatus(prev => ({ ...prev, [line.line_number]: 'video_failed' })) }
                                   }} className="flex-1 text-xs py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 font-medium transition-colors">Accept</button>
                                   <button onClick={() => {
-                                    setGeneratedImages(prev => { const n = { ...prev }; delete n[line.line_number]; return n })
-                                    setGeneratedStatus(prev => { const n = { ...prev }; delete n[line.line_number]; return n })
+                                    setRejectModal({ lineNumber: line.line_number, scriptLine: line.text, drFunction: line.dr_function })
                                   }} className="flex-1 text-xs py-2 rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 font-medium transition-colors">Reject</button>
                                 </div>
                                 <button onClick={async () => {
@@ -614,6 +661,66 @@ export default function ProjectsPage() {
           </>
         )}
       </main>
+
+      {/* Rejection Feedback Modal */}
+      {rejectModal && (
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-8" onClick={() => { if (!savingReject) { setRejectModal(null); setRejectReason(''); setRejectNote('') } }}>
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-gray-200 animate-fade-in" onClick={e => e.stopPropagation()}>
+            <div className="p-6">
+              <h3 className="text-[16px] font-semibold tracking-tight mb-1">Why are you rejecting this?</h3>
+              <p className="text-xs text-gray-400 mb-5">Your feedback improves future matching for this product.</p>
+              <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2 mb-5 border border-gray-100 line-clamp-2">&ldquo;{rejectModal.scriptLine}&rdquo;</p>
+
+              <label className="text-sm font-medium text-gray-500 block mb-2">Reason</label>
+              <div className="flex flex-wrap gap-2 mb-4">
+                {[
+                  'Wrong visual content',
+                  'Wrong mood/tone',
+                  'Product not visible',
+                  'Person looks wrong',
+                  'Setting doesn\'t match',
+                  'Low quality',
+                  'Too generic',
+                  'Not UGC style',
+                ].map(reason => (
+                  <button key={reason} onClick={() => setRejectReason(reason)}
+                    className={`text-xs px-3 py-1.5 rounded-lg border transition-all font-medium ${
+                      rejectReason === reason
+                        ? 'border-red-400 bg-red-50 text-red-700'
+                        : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:bg-gray-50'
+                    }`}>{reason}</button>
+                ))}
+              </div>
+
+              <label className="text-sm font-medium text-gray-500 block mb-2">Additional note (optional)</label>
+              <textarea
+                value={rejectNote}
+                onChange={e => setRejectNote(e.target.value)}
+                placeholder="e.g. Should show the device plugged into the wall, not on a table..."
+                rows={2}
+                className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 transition-all resize-none mb-5"
+              />
+
+              <div className="flex gap-3">
+                <button
+                  onClick={submitRejection}
+                  disabled={!rejectReason || savingReject}
+                  className="flex-1 py-2.5 rounded-xl bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {savingReject ? (
+                    <><div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent"></div> Saving...</>
+                  ) : 'Reject & Save Feedback'}
+                </button>
+                <button
+                  onClick={() => { setRejectModal(null); setRejectReason(''); setRejectNote('') }}
+                  disabled={savingReject}
+                  className="px-5 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-500 font-medium hover:bg-gray-50 transition-colors"
+                >Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Enlarged Image Modal */}
       {enlargedImage && (

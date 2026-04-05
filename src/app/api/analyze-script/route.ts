@@ -23,12 +23,27 @@ async function callGemini(prompt: string): Promise<string> {
 }
 
 export async function POST(req: NextRequest) {
-  const { script } = await req.json()
+  const { script, product_id, brand_id } = await req.json()
 
   // Step 1: Get ALL clips from DB
   const { data: allClips } = await getSupabase()
     .from('clips')
     .select('id, filename, description, dr_function, tags, mood, setting, has_product, has_person, person_gender, thumbnail_url, drive_url, reusability, camera_movement')
+
+  // Step 1b: Load learnings for this product/brand to improve matching
+  let learningsContext = ''
+  if (product_id || brand_id) {
+    let learningsQuery = getSupabase().from('learnings').select('script_line, dr_function, rejection_reason, editor_note').order('created_at', { ascending: false }).limit(30)
+    if (product_id) learningsQuery = learningsQuery.eq('product_id', product_id)
+    else if (brand_id) learningsQuery = learningsQuery.eq('brand_id', brand_id)
+    const { data: learnings } = await learningsQuery
+    if (learnings && learnings.length > 0) {
+      learningsContext = `\n\nPAST EDITOR FEEDBACK — Learn from these rejections to improve your matching:
+${learnings.map(l => `- Script: "${l.script_line}" (${l.dr_function}) — REJECTED because: ${l.rejection_reason}${l.editor_note ? ` (Note: ${l.editor_note})` : ''}`).join('\n')}
+
+Use this feedback to AVOID making the same mistakes. If an editor rejected a clip for a certain reason, do NOT match similar clips for similar script lines.`
+    }
+  }
 
   if (!allClips || allClips.length === 0) {
     return NextResponse.json({ error: 'No clips in library' }, { status: 500 })
@@ -74,7 +89,7 @@ ${JSON.stringify(clipCatalog)}
 Return JSON array. For each script segment:
 {"line_number": 1, "text": "exact script text", "dr_function": "HOOK|PROBLEM|MECHANISM|PRODUCT|OUTCOME|SOCIAL_PROOF|CTA|LIFESTYLE", "search_tags": ["relevant", "visual", "tags"], "matched_clip_ids": [id1, id2, id3, id4, id5]}
 
-Pick clip IDs that VISUALLY match what the script line is talking about. Order by best match first.`
+Pick clip IDs that VISUALLY match what the script line is talking about. Order by best match first.${learningsContext}`
 
   const result = await callGemini(prompt)
 
