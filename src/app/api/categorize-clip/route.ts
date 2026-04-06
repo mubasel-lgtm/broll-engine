@@ -7,6 +7,9 @@ const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemi
 // Simple API key for external callers (Make, scripts, etc.)
 const API_KEY = process.env.CATEGORIZE_API_KEY || 'broll-cat-2024'
 
+// Make webhook URL for Drive upload (set in Vercel env after creating Make scenario)
+const MAKE_WEBHOOK_URL = process.env.MAKE_DRIVE_WEBHOOK_URL || ''
+
 function getSupabase() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
@@ -14,15 +17,23 @@ function getSupabase() {
 // Extract Google Drive file ID from various URL formats
 function extractDriveFileId(url: string): string | null {
   const patterns = [
-    /\/d\/([a-zA-Z0-9_-]+)/,           // /d/FILE_ID/
-    /id=([a-zA-Z0-9_-]+)/,             // ?id=FILE_ID
-    /folders\/([a-zA-Z0-9_-]+)/,       // /folders/FOLDER_ID (not a file, but useful)
+    /\/d\/([a-zA-Z0-9_-]+)/,
+    /id=([a-zA-Z0-9_-]+)/,
   ]
   for (const p of patterns) {
     const m = url.match(p)
     if (m) return m[1]
   }
   return null
+}
+
+// Build a categorized filename: DRFUNCTION_mood_setting_clipID.ext
+function buildCategorizedFilename(category: Record<string, unknown>, clipId: number, originalFilename: string): string {
+  const ext = originalFilename.match(/\.[^.]+$/)?.[0] || '.mp4'
+  const dr = (category.dr_function as string || 'OTHER').toUpperCase()
+  const mood = (category.mood as string || 'neutral').replace(/\s+/g, '-').toLowerCase()
+  const setting = (category.setting as string || 'unknown').replace(/\s+/g, '-').toLowerCase()
+  return `${dr}_${mood}_${setting}_clip${clipId}${ext}`
 }
 
 export async function POST(req: NextRequest) {
@@ -35,17 +46,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized. Provide x-api-key header.' }, { status: 401 })
   }
 
-  const { image_base64, drive_url, filename, brand, filetype } = await req.json()
+  const { image_base64, drive_url, video_url, filename, brand, filetype } = await req.json()
 
-  if (!image_base64 && !drive_url) {
-    return NextResponse.json({ error: 'Provide image_base64 or drive_url' }, { status: 400 })
+  // Accept video_url (from create-video/Kling) or drive_url
+  const externalUrl = drive_url || video_url || ''
+
+  if (!image_base64 && !externalUrl) {
+    return NextResponse.json({ error: 'Provide image_base64, drive_url, or video_url' }, { status: 400 })
   }
 
   // --- DEDUPLICATION: Check if this file is already in the DB ---
-  if (drive_url) {
-    const fileId = extractDriveFileId(drive_url)
+  if (externalUrl) {
+    const fileId = extractDriveFileId(externalUrl)
     if (fileId) {
-      // Check if any clip already has this Drive file ID in its drive_url
       const { data: existing } = await getSupabase()
         .from('clips')
         .select('id, filename')
@@ -62,7 +75,6 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Also deduplicate by exact filename within the same brand
   if (filename && brand) {
     const { data: existingByName } = await getSupabase()
       .from('clips')
@@ -80,6 +92,46 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // --- SAVE FILE TO SUPABASE STORAGE ---
+  let storageUrl = ''
+  const safeFilename = (filename || `clip_${Date.now()}`).replace(/[^a-zA-Z0-9._-]/g, '_')
+  const storagePath = `${brand || 'uncategorized'}/${safeFilename}`
+
+  if (image_base64) {
+    // Upload base64 file to Supabase Storage
+    const isVideo = filetype === 'video' || safeFilename.match(/\.(mp4|mov|webm)$/i)
+    const contentType = isVideo ? 'video/mp4' : 'image/png'
+    const buffer = Buffer.from(image_base64, 'base64')
+
+    const { error: uploadError } = await getSupabase().storage
+      .from('broll-clips')
+      .upload(storagePath, buffer, { contentType, upsert: true })
+
+    if (!uploadError) {
+      const { data: urlData } = getSupabase().storage.from('broll-clips').getPublicUrl(storagePath)
+      storageUrl = urlData.publicUrl
+    }
+  } else if (video_url && !drive_url) {
+    // Kling video URL — download and save to storage
+    try {
+      const videoResp = await fetch(video_url)
+      if (videoResp.ok) {
+        const videoBuffer = Buffer.from(await videoResp.arrayBuffer())
+        const { error: uploadError } = await getSupabase().storage
+          .from('broll-clips')
+          .upload(storagePath, videoBuffer, { contentType: 'video/mp4', upsert: true })
+
+        if (!uploadError) {
+          const { data: urlData } = getSupabase().storage.from('broll-clips').getPublicUrl(storagePath)
+          storageUrl = urlData.publicUrl
+        }
+      }
+    } catch (e) {
+      // Non-critical: file won't be in storage but categorization still works
+      console.error('Failed to download video for storage:', e)
+    }
+  }
+
   // --- CATEGORIZE WITH GEMINI ---
   const parts: Array<Record<string, unknown>> = []
 
@@ -88,13 +140,11 @@ export async function POST(req: NextRequest) {
     parts.push({ inline_data: { mime_type: mimeType, data: image_base64 } })
   }
 
-  // If only drive_url (no base64), use the URL as context for Gemini
-  // Make can send a thumbnail as image_base64 alongside the drive_url
-  const mediaType = filetype || (filename?.match(/\.(mp4|mov|webm)$/i) ? 'video' : 'image')
+  const mediaType = filetype || (safeFilename.match(/\.(mp4|mov|webm)$/i) ? 'video' : 'image')
 
   parts.push({
     text: `You are a B-roll clip categorizer for direct-response video ads. Analyze this ${mediaType} and categorize it.
-${!image_base64 && drive_url ? `\nThe file is: "${filename || 'unknown'}" from Google Drive. Since you cannot see the file, categorize based on the filename and any patterns you recognize. Be conservative with your categorization.` : ''}
+${!image_base64 && externalUrl ? `\nThe file is: "${filename || 'unknown'}" from Google Drive. Since you cannot see the file, categorize based on the filename and any patterns you recognize. Be conservative with your categorization.` : ''}
 
 Return JSON with exactly these fields:
 {
@@ -140,12 +190,9 @@ IMPORTANT:
   }
 
   // --- SAVE TO CLIPS TABLE ---
-  const driveFileId = drive_url ? extractDriveFileId(drive_url) : null
-  const driveLink = drive_url || (driveFileId ? `https://drive.google.com/file/d/${driveFileId}/view` : '')
-
   const clipData = {
     filename: filename || `clip_${Date.now()}`,
-    filepath: driveLink,
+    filepath: storageUrl || externalUrl,
     filetype: mediaType,
     description: category.description,
     dr_function: category.dr_function,
@@ -161,8 +208,8 @@ IMPORTANT:
     reusability: category.reusability,
     reusability_reason: category.reusability_reason,
     brand: brand || 'Uncategorized',
-    drive_url: driveLink,
-    thumbnail_url: '',
+    drive_url: externalUrl,
+    thumbnail_url: storageUrl || '',
   }
 
   const { data: inserted, error } = await getSupabase()
@@ -175,5 +222,25 @@ IMPORTANT:
     return NextResponse.json({ error: `DB insert failed: ${error.message}`, category }, { status: 500 })
   }
 
-  return NextResponse.json({ success: true, clip: inserted, category })
+  // --- TRIGGER MAKE WEBHOOK: Upload to Google Drive ---
+  if (MAKE_WEBHOOK_URL && inserted) {
+    const categorizedFilename = buildCategorizedFilename(category, inserted.id, clipData.filename)
+    // Fire and forget — don't block the response
+    fetch(MAKE_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clip_id: inserted.id,
+        filename: categorizedFilename,
+        original_filename: clipData.filename,
+        file_url: storageUrl || externalUrl,
+        brand: clipData.brand,
+        dr_function: category.dr_function,
+        description: category.description,
+        tags: category.tags,
+      })
+    }).catch(e => console.error('Make webhook failed:', e))
+  }
+
+  return NextResponse.json({ success: true, clip: inserted, category, storage_url: storageUrl })
 }
