@@ -16,11 +16,13 @@ export async function POST(req: NextRequest) {
   const hasProduct = !!product_image
 
   // Determine what references to use based on DR function and script content
-  const mentionsProduct = /ODRx|Gerät|einsteck|Filter|Produkt|Link/i.test(script_line)
-  const needsProduct = hasProduct && (
+  // "Gerät" alone doesn't mean show the product — context matters
+  const mentionsProductInUse = /einsteck|angeschlossen|Steckdose|Filter|eingesteckt|läuft|Produkt|Link/i.test(script_line)
+  const mentionsDelivery = /kam an|bestellt|Lieferung|Paket|geliefert|ankam/i.test(script_line)
+  const needsProduct = hasProduct && !mentionsDelivery && (
     dr_function === 'PRODUCT' ||
     dr_function === 'CTA' ||
-    mentionsProduct
+    mentionsProductInUse
   )
   // Only include speaker reference when the scene clearly shows a PERSON
   // NEVER for: MECHANISM, PRODUCT (product-only shots), pure nature/science scenes
