@@ -218,7 +218,7 @@ export default function ProjectsPage() {
 
       // Build resultIds map for live updates
       const rIds: Record<number, number> = {}
-      results.forEach((r: { id: number; line_number: number }) => { rIds[r.line_number] = r.id })
+      results.forEach((r: { id: number; line_number: number }, idx: number) => { rIds[idx] = r.id })
       setResultIds(rIds)
 
       const loadedLines: ScriptLine[] = results.map((r: { id: number; line_number: number; script_text: string; dr_function: string; search_tags: string[]; matched_clip_ids: number[]; selected_clip_id: number | null; generated_image_url: string | null; generated_video_url: string | null }) => {
@@ -247,10 +247,10 @@ export default function ProjectsPage() {
       const vids: Record<number, string> = {}
       const stats: Record<number, 'review' | 'accepted' | 'creating_video' | 'video_done' | 'video_failed'> = {}
 
-      results.forEach((r: { line_number: number; selected_clip_id: number | null; generated_image_url: string | null; generated_video_url: string | null }) => {
-        if (r.selected_clip_id) sel[r.line_number] = r.selected_clip_id
-        if (r.generated_image_url) { imgs[r.line_number] = r.generated_image_url; stats[r.line_number] = 'review' }
-        if (r.generated_video_url) { vids[r.line_number] = r.generated_video_url; stats[r.line_number] = 'video_done' }
+      results.forEach((r: { line_number: number; selected_clip_id: number | null; generated_image_url: string | null; generated_video_url: string | null }, idx: number) => {
+        if (r.selected_clip_id) sel[idx] = r.selected_clip_id
+        if (r.generated_image_url) { imgs[idx] = r.generated_image_url; stats[idx] = 'review' }
+        if (r.generated_video_url) { vids[idx] = r.generated_video_url; stats[idx] = 'video_done' }
       })
 
       setSelected(sel)
@@ -596,13 +596,13 @@ export default function ProjectsPage() {
               </div>
             </div>
 
-            <div className="space-y-6">
-              {lines.map((line) => (
-                <div key={line.line_number} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+            <div className="space-y-8">
+              {lines.map((line, lineIdx) => (
+                <div key={lineIdx} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
                   {/* Script Line */}
                   <div className="p-6 border-b border-gray-100">
                     <div className="flex items-start gap-4">
-                      <span className="text-gray-300 font-mono text-sm mt-0.5 w-6 text-right flex-shrink-0">{line.line_number}</span>
+                      <span className="text-gray-300 font-mono text-sm mt-0.5 w-6 text-right flex-shrink-0">{lineIdx + 1}</span>
                       <div className="flex-1">
                         <p className="text-gray-800 mb-1 leading-relaxed">&ldquo;{line.text}&rdquo;</p>
                         {line.text_en && <p className="text-gray-400 text-sm mb-3 italic">{line.text_en}</p>}
@@ -613,7 +613,7 @@ export default function ProjectsPage() {
                           {line.search_tags?.slice(0, 5).map((tag, i) => (
                             <span key={i} className="text-xs bg-gray-50 text-gray-500 px-2.5 py-1 rounded-lg border border-gray-100">{tag}</span>
                           ))}
-                          {selected[line.line_number] && (
+                          {selected[lineIdx] && (
                             <span className="text-xs bg-emerald-50 text-emerald-600 px-2.5 py-1 rounded-lg border border-emerald-200 font-medium">Clip selected</span>
                           )}
                         </div>
@@ -628,8 +628,8 @@ export default function ProjectsPage() {
                         {line.matches.map((clip) => (
                           <div
                             key={clip.id}
-                            className={`flex-shrink-0 w-64 rounded-xl border transition-all shadow-sm hover:shadow-md ${
-                              selected[line.line_number] === clip.id
+                            className={`flex-shrink-0 w-80 rounded-xl border transition-all shadow-sm hover:shadow-md ${
+                              selected[lineIdx] === clip.id
                                 ? 'border-indigo-500 bg-indigo-50/30 ring-1 ring-indigo-200'
                                 : 'border-gray-200 bg-white hover:border-gray-300'
                             }`}
@@ -661,15 +661,15 @@ export default function ProjectsPage() {
                           </div>
                         ))}
 
-                        <div className="flex-shrink-0 w-64 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50/50 overflow-hidden">
-                          {generating[line.line_number] ? (
+                        <div className="flex-shrink-0 w-80 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50/50 overflow-hidden">
+                          {generating[lineIdx] ? (
                             <div className="flex items-center justify-center p-8">
                               <div className="text-center">
                                 <div className="animate-spin rounded-full h-6 w-6 border-2 border-amber-500 border-t-transparent mx-auto mb-3"></div>
                                 <p className="text-xs text-amber-600 font-medium">Generating image...</p>
                               </div>
                             </div>
-                          ) : generatedStatus[line.line_number] === 'creating_video' ? (
+                          ) : generatedStatus[lineIdx] === 'creating_video' ? (
                             <div className="flex items-center justify-center p-8">
                               <div className="text-center">
                                 <div className="animate-spin rounded-full h-6 w-6 border-2 border-emerald-500 border-t-transparent mx-auto mb-3"></div>
@@ -677,26 +677,26 @@ export default function ProjectsPage() {
                                 <p className="text-xs text-gray-400 mt-1">~45 seconds</p>
                               </div>
                             </div>
-                          ) : generatedVideos[line.line_number] ? (
+                          ) : generatedVideos[lineIdx] ? (
                             <div>
-                              <video src={generatedVideos[line.line_number]} controls className="w-full aspect-video object-cover rounded-t-xl" playsInline />
+                              <video src={generatedVideos[lineIdx]} controls className="w-full aspect-video object-cover rounded-t-xl" playsInline />
                               <div className="p-3">
-                                <a href={generatedVideos[line.line_number]} target="_blank" rel="noopener noreferrer"
+                                <a href={generatedVideos[lineIdx]} target="_blank" rel="noopener noreferrer"
                                   className="text-xs px-3 py-1.5 rounded-lg w-full block text-center bg-emerald-600 text-white hover:bg-emerald-700 font-medium transition-colors">Show Video</a>
                               </div>
                             </div>
-                          ) : generatedImages[line.line_number] ? (
+                          ) : generatedImages[lineIdx] ? (
                             <div>
-                              <img src={generatedImages[line.line_number]} alt="" className="w-full aspect-video object-cover cursor-pointer hover:opacity-90 rounded-t-xl transition-opacity" onClick={() => setEnlargedImage(generatedImages[line.line_number])} />
+                              <img src={generatedImages[lineIdx]} alt="" className="w-full aspect-video object-cover cursor-pointer hover:opacity-90 rounded-t-xl transition-opacity" onClick={() => setEnlargedImage(generatedImages[lineIdx])} />
                               <div className="p-3 space-y-2">
-                                {generatedStatus[line.line_number] === 'video_failed' && (
+                                {generatedStatus[lineIdx] === 'video_failed' && (
                                   <p className="text-xs text-red-500 font-medium mb-1">Video failed (check Kling credits)</p>
                                 )}
                                 <div className="flex gap-2">
                                   <button onClick={async () => {
-                                    setGeneratedStatus(prev => ({ ...prev, [line.line_number]: 'creating_video' }))
+                                    setGeneratedStatus(prev => ({ ...prev, [lineIdx]: 'creating_video' }))
                                     try {
-                                      const imgData = generatedImages[line.line_number].split(',')[1]
+                                      const imgData = generatedImages[lineIdx].split(',')[1]
                                       const resp = await fetch('/api/create-video', {
                                         method: 'POST',
                                         headers: { 'Content-Type': 'application/json' },
@@ -704,10 +704,10 @@ export default function ProjectsPage() {
                                       })
                                       const data = await resp.json()
                                       if (data.success) {
-                                        setGeneratedVideos(prev => ({ ...prev, [line.line_number]: data.video_url }))
-                                        setGeneratedStatus(prev => ({ ...prev, [line.line_number]: 'video_done' }))
+                                        setGeneratedVideos(prev => ({ ...prev, [lineIdx]: data.video_url }))
+                                        setGeneratedStatus(prev => ({ ...prev, [lineIdx]: 'video_done' }))
                                         // Persist video URL to project results
-                                        updateResult(line.line_number, { generated_video_url: data.video_url, status: 'video_done' })
+                                        updateResult(lineIdx, { generated_video_url: data.video_url, status: 'video_done' })
                                         // Auto-save to clip library with categorization + Drive upload (awaited!)
                                         try {
                                           await fetch('/api/categorize-clip', {
@@ -716,19 +716,19 @@ export default function ProjectsPage() {
                                             body: JSON.stringify({
                                               image_base64: imgData,
                                               video_url: data.video_url,
-                                              filename: `ai_broll_${line.line_number}_${Date.now()}.mp4`,
+                                              filename: `ai_broll_${lineIdx + 1}_${Date.now()}.mp4`,
                                               brand: selectedBrandObj?.name || 'Uncategorized',
                                               filetype: 'video',
                                             })
                                           })
                                         } catch (e) { console.error('Auto-categorize failed:', e) }
                                       } else {
-                                        setGeneratedStatus(prev => ({ ...prev, [line.line_number]: 'video_failed' }))
+                                        setGeneratedStatus(prev => ({ ...prev, [lineIdx]: 'video_failed' }))
                                       }
-                                    } catch { setGeneratedStatus(prev => ({ ...prev, [line.line_number]: 'video_failed' })) }
+                                    } catch { setGeneratedStatus(prev => ({ ...prev, [lineIdx]: 'video_failed' })) }
                                   }} className="flex-1 text-xs py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 font-medium transition-colors">Accept</button>
                                   <button onClick={() => {
-                                    setRejectModal({ lineNumber: line.line_number, scriptLine: line.text, drFunction: line.dr_function })
+                                    setRejectModal({ lineNumber: lineIdx, scriptLine: line.text, drFunction: line.dr_function })
                                   }} className="flex-1 text-xs py-2 rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 font-medium transition-colors">Reject</button>
                                 </div>
                               </div>
@@ -736,7 +736,7 @@ export default function ProjectsPage() {
                           ) : (
                             <div className="flex items-center justify-center p-8 cursor-pointer hover:bg-gray-100/50 transition-colors h-full"
                               onClick={async () => {
-                                setGenerating(prev => ({ ...prev, [line.line_number]: true }))
+                                setGenerating(prev => ({ ...prev, [lineIdx]: true }))
                                 try {
                                   const resp = await fetch('/api/generate-broll', {
                                     method: 'POST',
@@ -746,12 +746,12 @@ export default function ProjectsPage() {
                                   const data = await resp.json()
                                   if (data.success) {
                                     const imgUrl = `data:${data.image.mimeType};base64,${data.image.data}`
-                                    setGeneratedImages(prev => ({ ...prev, [line.line_number]: imgUrl }))
-                                    setGeneratedStatus(prev => ({ ...prev, [line.line_number]: 'review' }))
-                                    updateResult(line.line_number, { generated_image_url: imgUrl, status: 'review' })
+                                    setGeneratedImages(prev => ({ ...prev, [lineIdx]: imgUrl }))
+                                    setGeneratedStatus(prev => ({ ...prev, [lineIdx]: 'review' }))
+                                    updateResult(lineIdx, { generated_image_url: imgUrl, status: 'review' })
                                   }
                                 } catch (e) { console.error(e) }
-                                setGenerating(prev => ({ ...prev, [line.line_number]: false }))
+                                setGenerating(prev => ({ ...prev, [lineIdx]: false }))
                               }}>
                               <div className="text-center">
                                 <div className="w-10 h-10 rounded-xl bg-white border border-gray-200 flex items-center justify-center mx-auto mb-2 shadow-sm">
@@ -767,9 +767,9 @@ export default function ProjectsPage() {
                       <div className="flex items-center gap-4">
                         <span className="text-sm text-gray-400">No matching clips found</span>
                         <button
-                          disabled={generating[line.line_number]}
+                          disabled={generating[lineIdx]}
                           onClick={async () => {
-                            setGenerating(prev => ({ ...prev, [line.line_number]: true }))
+                            setGenerating(prev => ({ ...prev, [lineIdx]: true }))
                             try {
                               const resp = await fetch('/api/generate-broll', {
                                 method: 'POST',
@@ -779,19 +779,19 @@ export default function ProjectsPage() {
                               const data = await resp.json()
                               if (data.success) {
                                 const imgUrl = `data:${data.image.mimeType};base64,${data.image.data}`
-                                setGeneratedImages(prev => ({ ...prev, [line.line_number]: imgUrl }))
-                                setGeneratedStatus(prev => ({ ...prev, [line.line_number]: 'review' }))
-                                updateResult(line.line_number, { generated_image_url: imgUrl, status: 'review' })
+                                setGeneratedImages(prev => ({ ...prev, [lineIdx]: imgUrl }))
+                                setGeneratedStatus(prev => ({ ...prev, [lineIdx]: 'review' }))
+                                updateResult(lineIdx, { generated_image_url: imgUrl, status: 'review' })
                               }
                             } catch (e) { console.error(e) }
-                            setGenerating(prev => ({ ...prev, [line.line_number]: false }))
+                            setGenerating(prev => ({ ...prev, [lineIdx]: false }))
                           }}
                           className="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-4 py-2 rounded-xl hover:bg-amber-100 transition font-medium disabled:opacity-50"
                         >
-                          {generating[line.line_number] ? 'Generating...' : 'Generate new B-Roll with AI'}
+                          {generating[lineIdx] ? 'Generating...' : 'Generate new B-Roll with AI'}
                         </button>
-                        {generatedImages[line.line_number] && (
-                          <a href={generatedImages[line.line_number]} download={`broll_${line.line_number}.jpg`}
+                        {generatedImages[lineIdx] && (
+                          <a href={generatedImages[lineIdx]} download={`broll_${lineIdx + 1}.jpg`}
                             className="text-xs bg-emerald-600 text-white px-4 py-2 rounded-xl hover:bg-emerald-700 font-medium transition-colors">Download generated</a>
                         )}
                       </div>
