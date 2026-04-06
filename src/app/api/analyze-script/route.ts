@@ -25,10 +25,11 @@ async function callGemini(prompt: string): Promise<string> {
 export async function POST(req: NextRequest) {
   const { script, product_id, brand_id } = await req.json()
 
-  // Step 1: Get ALL clips from DB
+  // Step 1: Get only VIDEO clips from DB (no images/icons)
   const { data: allClips } = await getSupabase()
     .from('clips')
-    .select('id, filename, description, dr_function, tags, mood, setting, has_product, has_person, person_gender, thumbnail_url, drive_url, reusability, camera_movement')
+    .select('id, filename, description, dr_function, tags, mood, setting, has_product, has_person, person_gender, thumbnail_url, drive_url, reusability, camera_movement, filetype')
+    .eq('filetype', 'video')
 
   // Step 1b: Load learnings for this product/brand to improve matching
   let learningsContext = ''
@@ -62,29 +63,35 @@ Use this feedback to AVOID making the same mistakes. If an editor rejected a cli
   // Step 3: Send script + entire catalog to Gemini for intelligent matching
   const prompt = `You are a direct-response video ad editor cutting B-roll for a German ad. You have a script and a library of B-roll clips.
 
-YOUR #1 JOB: Split the script into VERY SHORT B-roll segments. Each segment = ONE single visual action or idea.
+YOUR JOB: Split the script into B-roll segments. Each segment = ONE distinct visual scene that a video editor would cut to.
 
-CRITICAL SPLITTING RULES:
-- Each segment should be 3-8 words MAX — one visual moment per segment
-- Every new ACTION, OBJECT, EMOTION, or SCENE CHANGE = a new segment
-- NEVER combine multiple actions into one segment
-- Think like a video editor: each cut needs its own B-roll clip
+SPLITTING RULES:
+- Each segment should show ONE clear visual scene (typically 5-15 words)
+- Split when the VISUAL SCENE changes (different location, action, person, or object)
+- Keep together words that describe the SAME visual moment
+- Short fragments like "und gewartet" or "im Monat" are NOT their own segment — merge them with the previous or next segment
+- A complete thought that describes one scene = one segment
 
-EXAMPLE of correct splitting:
+EXAMPLE — correct splitting:
 Script: "Das Gerät kam drei Tage nachdem ich es bestellt habe an, ich hab es an die Steckdose angeschlossen, und dann einfach wie immer weitergeraucht und gewartet."
-Split into:
+Split:
 1. "Das Gerät kam drei Tage nachdem ich es bestellt habe an" → package arriving, delivery
-2. "ich hab es an die Steckdose angeschlossen" → plugging device into wall outlet
-3. "und dann einfach wie immer weitergeraucht" → person smoking
-4. "und gewartet" → person waiting, looking around
+2. "ich hab es an die Steckdose angeschlossen" → plugging device into outlet
+3. "und dann einfach wie immer weitergeraucht und gewartet" → person smoking on couch, waiting
 
-WRONG (too long, multiple actions combined):
-1. "Das Gerät kam drei Tage nachdem ich es bestellt habe an, ich hab es an die Steckdose angeschlossen" ← WRONG! Two different visuals!
+WRONG — too granular:
+- "und gewartet" as its own segment ← WRONG, not a standalone visual
+- "im Monat" as its own segment ← WRONG, belongs with the price
 
-MORE EXAMPLES:
-- "Meine Freundin hat mich gefragt ob ich aufgehört habe zu rauchen" → one segment (one conversation moment)
-- "weil die Wohnung so frisch gerochen hat" → separate segment (different visual: fresh apartment)
-- "Ich hab erstmal gelacht" → separate segment (reaction shot)
+WRONG — too long:
+- "Das Gerät kam an, ich hab es an die Steckdose angeschlossen, und dann weitergeraucht" ← WRONG, three different visuals
+
+MORE CORRECT EXAMPLES:
+- "und ich hab schon gedacht dass das genauso endet wie alles andere was ich vorher probiert hatte" → ONE segment (one emotion: disappointment about past failures)
+- "für unter einem Euro Strom im Monat" → ONE segment (cost/value visual)
+- "Die binden sich an Geruchspartikel und neutralisieren sie" → ONE segment (same scientific animation)
+- "Meine Freundin hat mich gefragt wann ich eigentlich aufgehört habe" → ONE segment (one conversation)
+- "als eine Freundin zu Besuch kam die weiß dass ich rauche" → ONE segment (friend arriving)
 
 For EACH segment, pick the TOP 5 best matching clips from the library by their ID.
 
@@ -92,21 +99,20 @@ MATCHING RULES:
 - Match based on VISUAL MEANING, not just keywords
 - "Bei Galileo gesehen" = someone watching TV, a TV show, a screen
 - "Zigarettengeruch" = cigarette smoke, smoky room, ashtray
-- "Luftfilter zu Hause" = air purifier device, home appliance
 - "steckst das einmal ein" = plugging in device, product close-up
-- "klick auf den Link" = CTA, product shot, call to action
+- "klick auf den Link" = CTA, product shot
 - NEVER match a clip just because it shares a DR function — the VISUAL CONTENT must match
 
 SCRIPT:
 ${script}
 
-CLIP LIBRARY (${clipCatalog.length} clips):
+CLIP LIBRARY (${clipCatalog.length} clips — all are videos, no images):
 ${JSON.stringify(clipCatalog)}
 
 Return JSON array. For each segment:
 {"line_number": 1, "text": "exact script text for this segment", "dr_function": "HOOK|PROBLEM|MECHANISM|PRODUCT|OUTCOME|SOCIAL_PROOF|CTA|LIFESTYLE", "search_tags": ["relevant", "visual", "tags"], "matched_clip_ids": [id1, id2, id3, id4, id5]}
 
-REMEMBER: Split aggressively! One visual = one segment. If in doubt, split more.${learningsContext}`
+Split by visual scene changes. One scene = one segment. Not too fine, not too coarse.${learningsContext}`
 
   const result = await callGemini(prompt)
 
