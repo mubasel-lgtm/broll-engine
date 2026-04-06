@@ -89,17 +89,41 @@ export default function ClipsPage() {
     setUploading(true)
     setUploadResult(null)
     try {
-      const reader = new FileReader()
-      const base64 = await new Promise<string>((resolve) => {
-        reader.onload = () => resolve((reader.result as string).split(',')[1])
-        reader.readAsDataURL(uploadFile)
-      })
+      // Step 1: Upload file directly to Supabase Storage (handles large files)
+      const safeName = uploadFile.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const storagePath = `${uploadBrand}/${Date.now()}_${safeName}`
+      const { error: storageError } = await supabase.storage
+        .from('broll-clips')
+        .upload(storagePath, uploadFile, { upsert: true })
+
+      if (storageError) {
+        setUploadResult({ success: false, message: `Storage upload failed: ${storageError.message}` })
+        setUploading(false)
+        return
+      }
+
+      const { data: urlData } = supabase.storage.from('broll-clips').getPublicUrl(storagePath)
+      const storageUrl = urlData.publicUrl
+
+      // Step 2: For images, also send base64 for Gemini analysis (small enough)
+      // For videos, send just the URL — Gemini can't analyze video from base64 anyway
       const isVideo = uploadFile.type.startsWith('video/')
+      let base64ForGemini: string | undefined
+      if (!isVideo && uploadFile.size < 4_000_000) {
+        const reader = new FileReader()
+        base64ForGemini = await new Promise<string>((resolve) => {
+          reader.onload = () => resolve((reader.result as string).split(',')[1])
+          reader.readAsDataURL(uploadFile)
+        })
+      }
+
+      // Step 3: Categorize + Drive upload
       const resp = await fetch('/api/categorize-clip', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          image_base64: base64,
+          ...(base64ForGemini ? { image_base64: base64ForGemini } : {}),
+          video_url: storageUrl,
           filename: uploadFile.name,
           brand: uploadBrand,
           filetype: isVideo ? 'video' : 'image',
@@ -107,7 +131,7 @@ export default function ClipsPage() {
       })
       const data = await resp.json()
       if (data.success) {
-        setUploadResult({ success: true, message: `Clip categorized and saved: ${data.category.dr_function} — ${data.category.mood}` })
+        setUploadResult({ success: true, message: `Clip categorized and saved: ${data.category.dr_function} — ${data.category.mood}${data.drive_url ? ' — In Drive!' : ''}` })
         loadClips()
         setTimeout(() => {
           setShowUpload(false)
@@ -115,9 +139,9 @@ export default function ClipsPage() {
           setUploadPreview(null)
           setUploadBrand('')
           setUploadResult(null)
-        }, 2000)
+        }, 2500)
       } else {
-        setUploadResult({ success: false, message: data.error || 'Upload failed' })
+        setUploadResult({ success: false, message: data.error || 'Categorization failed' })
       }
     } catch (e) {
       setUploadResult({ success: false, message: 'Network error' })
