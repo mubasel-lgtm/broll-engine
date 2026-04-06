@@ -678,18 +678,20 @@ export default function ProjectsPage() {
                                       if (data.success) {
                                         setGeneratedVideos(prev => ({ ...prev, [line.line_number]: data.video_url }))
                                         setGeneratedStatus(prev => ({ ...prev, [line.line_number]: 'video_done' }))
-                                        // Auto-save to clip library with categorization
-                                        fetch('/api/categorize-clip', {
-                                          method: 'POST',
-                                          headers: { 'Content-Type': 'application/json' },
-                                          body: JSON.stringify({
-                                            image_base64: imgData,
-                                            video_url: data.video_url,
-                                            filename: `ai_broll_${line.line_number}_${Date.now()}.mp4`,
-                                            brand: selectedBrandObj?.name || 'Uncategorized',
-                                            filetype: 'video',
+                                        // Auto-save to clip library with categorization + Drive upload (awaited!)
+                                        try {
+                                          await fetch('/api/categorize-clip', {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({
+                                              image_base64: imgData,
+                                              video_url: data.video_url,
+                                              filename: `ai_broll_${line.line_number}_${Date.now()}.mp4`,
+                                              brand: selectedBrandObj?.name || 'Uncategorized',
+                                              filetype: 'video',
+                                            })
                                           })
-                                        }).catch(e => console.error('Auto-categorize failed:', e))
+                                        } catch (e) { console.error('Auto-categorize failed:', e) }
                                       } else {
                                         setGeneratedStatus(prev => ({ ...prev, [line.line_number]: 'video_failed' }))
                                       }

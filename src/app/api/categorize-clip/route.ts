@@ -97,22 +97,8 @@ export async function POST(req: NextRequest) {
   const safeFilename = (filename || `clip_${Date.now()}`).replace(/[^a-zA-Z0-9._-]/g, '_')
   const storagePath = `${brand || 'uncategorized'}/${safeFilename}`
 
-  if (image_base64) {
-    // Upload base64 file to Supabase Storage
-    const isVideo = filetype === 'video' || safeFilename.match(/\.(mp4|mov|webm)$/i)
-    const contentType = isVideo ? 'video/mp4' : 'image/png'
-    const buffer = Buffer.from(image_base64, 'base64')
-
-    const { error: uploadError } = await getSupabase().storage
-      .from('broll-clips')
-      .upload(storagePath, buffer, { contentType, upsert: true })
-
-    if (!uploadError) {
-      const { data: urlData } = getSupabase().storage.from('broll-clips').getPublicUrl(storagePath)
-      storageUrl = urlData.publicUrl
-    }
-  } else if (video_url && !drive_url) {
-    // Kling video URL — download and save to storage
+  if (video_url && !drive_url) {
+    // Kling video URL — download the actual VIDEO and save to storage (priority over image)
     try {
       const videoResp = await fetch(video_url)
       if (videoResp.ok) {
@@ -127,8 +113,21 @@ export async function POST(req: NextRequest) {
         }
       }
     } catch (e) {
-      // Non-critical: file won't be in storage but categorization still works
       console.error('Failed to download video for storage:', e)
+    }
+  } else if (image_base64 && !video_url) {
+    // Image-only upload (no video URL) — save image to storage
+    const isVideo = filetype === 'video' || safeFilename.match(/\.(mp4|mov|webm)$/i)
+    const contentType = isVideo ? 'video/mp4' : 'image/png'
+    const buffer = Buffer.from(image_base64, 'base64')
+
+    const { error: uploadError } = await getSupabase().storage
+      .from('broll-clips')
+      .upload(storagePath, buffer, { contentType, upsert: true })
+
+    if (!uploadError) {
+      const { data: urlData } = getSupabase().storage.from('broll-clips').getPublicUrl(storagePath)
+      storageUrl = urlData.publicUrl
     }
   }
 
