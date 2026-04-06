@@ -50,14 +50,17 @@ Use this feedback to AVOID making the same mistakes. If an editor rejected a cli
     return NextResponse.json({ error: 'No clips in library' }, { status: 500 })
   }
 
-  // Step 2: Build a compact clip catalog for Gemini
+  // Step 2: Build clip catalog for Gemini — more detail = better matching
   const clipCatalog = allClips.map(c => ({
     id: c.id,
-    desc: c.description?.substring(0, 80),
+    desc: c.description?.substring(0, 200),
     dr: c.dr_function,
-    tags: (c.tags || []).slice(0, 5).join(', '),
+    tags: (c.tags || []).slice(0, 7).join(', '),
     mood: c.mood,
-    product: c.has_product
+    setting: c.setting,
+    person: c.has_person,
+    product: c.has_product,
+    reuse: c.reusability,
   }))
 
   // Step 3: Send script + entire catalog to Gemini for intelligent matching
@@ -102,6 +105,15 @@ MATCHING RULES:
 - "steckst das einmal ein" = plugging in device, product close-up
 - "klick auf den Link" = CTA, product shot
 - NEVER match a clip just because it shares a DR function — the VISUAL CONTENT must match
+
+UGC STYLE RULES — THIS IS CRITICAL:
+- This is a UGC (User Generated Content) testimonial ad — it must look like a real person filmed it on their phone
+- NEVER suggest clips that look like TV shows, game shows, news broadcasts, or professional studio productions
+- NEVER suggest clips with stage settings, panels of judges, studio audiences, or professional lighting setups
+- Clips with setting "studio", "stage", "TV set", "news studio" are WRONG for UGC — avoid them
+- PREFER clips that show: real homes, living rooms, kitchens, bedrooms, everyday life, casual/natural settings
+- PREFER clips with: one or two normal people, natural lighting, iPhone-quality look, casual poses
+- A clip that shows the RIGHT emotion in the WRONG setting (e.g. "disappointed" but on a TV stage) is WORSE than a clip with a less perfect emotion in an authentic home setting
 
 SCRIPT:
 ${script}
