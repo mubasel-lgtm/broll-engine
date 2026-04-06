@@ -60,6 +60,11 @@ export default function ProjectsPage() {
   // Chat history per line: previous prompts + rejections for iterative generation
   const [chatHistories, setChatHistories] = useState<Record<number, Array<{ prompt: string; rejection: string }>>>({})
   const [lastPrompts, setLastPrompts] = useState<Record<number, string>>({})
+  // Visual concept suggestions before generating
+  const [conceptModal, setConceptModal] = useState<{ lineIdx: number; text: string; drFunction: string } | null>(null)
+  const [concepts, setConcepts] = useState<string[]>([])
+  const [customConcept, setCustomConcept] = useState('')
+  const [loadingConcepts, setLoadingConcepts] = useState(false)
 
   // Split line state
   const [splitModal, setSplitModal] = useState<{ lineIdx: number; text: string } | null>(null)
@@ -164,6 +169,35 @@ export default function ProjectsPage() {
       console.error('Split failed:', e)
     }
     setLoading(false)
+  }
+
+  async function generateWithConcept(lineIdx: number, concept: string, scriptLine: string, drFunction: string) {
+    setConceptModal(null)
+    setGenerating(prev => ({ ...prev, [lineIdx]: true }))
+    try {
+      const resp = await fetch('/api/generate-broll', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          script_line: scriptLine,
+          dr_function: drFunction,
+          aroll_image: arollBase64,
+          speaker_description: speakerDesc,
+          product_image: productImageB64,
+          product_physical: selectedProd?.physical_notes,
+          visual_concept: concept,
+        })
+      })
+      const data = await resp.json()
+      if (data.success) {
+        const imgUrl = `data:${data.image.mimeType};base64,${data.image.data}`
+        setGeneratedImages(prev => ({ ...prev, [lineIdx]: imgUrl }))
+        setGeneratedStatus(prev => ({ ...prev, [lineIdx]: 'review' }))
+        setLastPrompts(prev => ({ ...prev, [lineIdx]: data.prompt_used }))
+        updateResult(lineIdx, { generated_image_url: imgUrl, status: 'review' })
+      }
+    } catch (e) { console.error(e) }
+    setGenerating(prev => ({ ...prev, [lineIdx]: false }))
   }
 
   function updateResult(lineNumber: number, update: Record<string, unknown>) {
@@ -794,23 +828,20 @@ export default function ProjectsPage() {
                           ) : (
                             <div className="flex items-center justify-center p-8 cursor-pointer hover:bg-gray-100/50 transition-colors h-full"
                               onClick={async () => {
-                                setGenerating(prev => ({ ...prev, [lineIdx]: true }))
+                                setConceptModal({ lineIdx, text: line.text, drFunction: line.dr_function })
+                                setConcepts([])
+                                setCustomConcept('')
+                                setLoadingConcepts(true)
                                 try {
-                                  const resp = await fetch('/api/generate-broll', {
+                                  const resp = await fetch('/api/suggest-concepts', {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ script_line: line.text, dr_function: line.dr_function, aroll_image: arollBase64, speaker_description: speakerDesc, product_image: productImageB64, product_physical: selectedProd?.physical_notes })
+                                    body: JSON.stringify({ script_line: line.text, dr_function: line.dr_function })
                                   })
                                   const data = await resp.json()
-                                  if (data.success) {
-                                    const imgUrl = `data:${data.image.mimeType};base64,${data.image.data}`
-                                    setGeneratedImages(prev => ({ ...prev, [lineIdx]: imgUrl }))
-                                    setGeneratedStatus(prev => ({ ...prev, [lineIdx]: 'review' }))
-                                    setLastPrompts(prev => ({ ...prev, [lineIdx]: data.prompt_used }))
-                                    updateResult(lineIdx, { generated_image_url: imgUrl, status: 'review' })
-                                  }
+                                  setConcepts(data.concepts || [])
                                 } catch (e) { console.error(e) }
-                                setGenerating(prev => ({ ...prev, [lineIdx]: false }))
+                                setLoadingConcepts(false)
                               }}>
                               <div className="text-center">
                                 <div className="w-10 h-10 rounded-xl bg-white border border-gray-200 flex items-center justify-center mx-auto mb-2 shadow-sm">
@@ -826,29 +857,25 @@ export default function ProjectsPage() {
                       <div className="flex items-center gap-4">
                         <span className="text-sm text-gray-400">No matching clips found</span>
                         <button
-                          disabled={generating[lineIdx]}
                           onClick={async () => {
-                            setGenerating(prev => ({ ...prev, [lineIdx]: true }))
+                            setConceptModal({ lineIdx, text: line.text, drFunction: line.dr_function })
+                            setConcepts([])
+                            setCustomConcept('')
+                            setLoadingConcepts(true)
                             try {
-                              const resp = await fetch('/api/generate-broll', {
+                              const resp = await fetch('/api/suggest-concepts', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ script_line: line.text, dr_function: line.dr_function, aroll_image: arollBase64, speaker_description: speakerDesc, product_image: productImageB64, product_physical: selectedProd?.physical_notes })
+                                body: JSON.stringify({ script_line: line.text, dr_function: line.dr_function })
                               })
                               const data = await resp.json()
-                              if (data.success) {
-                                const imgUrl = `data:${data.image.mimeType};base64,${data.image.data}`
-                                setGeneratedImages(prev => ({ ...prev, [lineIdx]: imgUrl }))
-                                setGeneratedStatus(prev => ({ ...prev, [lineIdx]: 'review' }))
-                                setLastPrompts(prev => ({ ...prev, [lineIdx]: data.prompt_used }))
-                                updateResult(lineIdx, { generated_image_url: imgUrl, status: 'review' })
-                              }
+                              setConcepts(data.concepts || [])
                             } catch (e) { console.error(e) }
-                            setGenerating(prev => ({ ...prev, [lineIdx]: false }))
+                            setLoadingConcepts(false)
                           }}
-                          className="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-4 py-2 rounded-xl hover:bg-amber-100 transition font-medium disabled:opacity-50"
+                          className="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-4 py-2 rounded-xl hover:bg-amber-100 transition font-medium"
                         >
-                          {generating[lineIdx] ? 'Generating...' : 'Generate new B-Roll with AI'}
+                          Generate new B-Roll with AI
                         </button>
                         {generatedImages[lineIdx] && (
                           <a href={generatedImages[lineIdx]} download={`broll_${lineIdx + 1}.jpg`}
@@ -863,6 +890,55 @@ export default function ProjectsPage() {
           </>
         )}
       </main>
+
+      {/* Concept Selection Modal */}
+      {conceptModal && (
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-8" onClick={() => setConceptModal(null)}>
+          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-gray-200 animate-fade-in" onClick={e => e.stopPropagation()}>
+            <div className="p-6">
+              <h3 className="text-[16px] font-semibold tracking-tight mb-1">Choose a visual concept</h3>
+              <p className="text-xs text-gray-400 mb-2">Pick a suggestion or write your own — this guides the AI image.</p>
+              <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2 mb-5 border border-gray-100">&ldquo;{conceptModal.text}&rdquo;</p>
+
+              {loadingConcepts ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="animate-spin rounded-full h-6 w-6 border-2 border-indigo-500 border-t-transparent mr-3"></div>
+                  <span className="text-sm text-gray-500">Generating ideas...</span>
+                </div>
+              ) : (
+                <div className="space-y-2 mb-4">
+                  {concepts.map((concept, i) => (
+                    <button key={i}
+                      onClick={() => generateWithConcept(conceptModal.lineIdx, concept, conceptModal.text, conceptModal.drFunction)}
+                      className="w-full text-left px-4 py-3 rounded-xl border border-gray-200 hover:border-indigo-400 hover:bg-indigo-50/30 transition-all text-sm text-gray-700 leading-relaxed"
+                    >
+                      {concept}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="border-t border-gray-100 pt-4 mt-2">
+                <label className="text-xs font-medium text-gray-500 block mb-2">Or describe your own:</label>
+                <div className="flex gap-2">
+                  <input
+                    value={customConcept}
+                    onChange={e => setCustomConcept(e.target.value)}
+                    placeholder="e.g. A man receives a brown package at his front door..."
+                    className="flex-1 bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all"
+                    onKeyDown={e => { if (e.key === 'Enter' && customConcept.trim()) generateWithConcept(conceptModal.lineIdx, customConcept, conceptModal.text, conceptModal.drFunction) }}
+                  />
+                  <button
+                    onClick={() => { if (customConcept.trim()) generateWithConcept(conceptModal.lineIdx, customConcept, conceptModal.text, conceptModal.drFunction) }}
+                    disabled={!customConcept.trim()}
+                    className="px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-40"
+                  >Generate</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Split Line Modal */}
       {splitModal && (

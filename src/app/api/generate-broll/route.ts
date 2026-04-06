@@ -5,7 +5,7 @@ const NANO_URL = `https://generativelanguage.googleapis.com/v1beta/models/nano-b
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`
 
 export async function POST(req: NextRequest) {
-  const { script_line, dr_function, aroll_image, speaker_description, product_image, product_physical, rejection_feedback, previous_prompt, chat_history } = await req.json()
+  const { script_line, dr_function, aroll_image, speaker_description, product_image, product_physical, rejection_feedback, previous_prompt, chat_history, visual_concept } = await req.json()
   // chat_history: Array of { prompt: string, rejection: string } from previous attempts
 
   if (!script_line) {
@@ -84,7 +84,7 @@ DR Function: ${dr_function}
 ${drRules[dr_function] || ''}
 
 ${refInstructions}
-
+${visual_concept ? `\nThe editor has chosen this visual concept for the image:\n"${visual_concept}"\nFollow this concept closely when writing the prompt.\n` : ''}
 Rules:
 ${refPrefix ? `- Start with: "${refPrefix}"` : ''}
 - iPhone-quality casual photography, bright natural daylight, UGC amateur style
