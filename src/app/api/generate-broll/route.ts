@@ -5,7 +5,7 @@ const NANO_URL = `https://generativelanguage.googleapis.com/v1beta/models/nano-b
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`
 
 export async function POST(req: NextRequest) {
-  const { script_line, dr_function, aroll_image, speaker_description, product_image, product_physical } = await req.json()
+  const { script_line, dr_function, aroll_image, speaker_description, product_image, product_physical, rejection_feedback } = await req.json()
 
   if (!script_line) {
     return NextResponse.json({ error: 'Missing script_line' }, { status: 400 })
@@ -90,6 +90,7 @@ ${refPrefix ? `- Start with: "${refPrefix}"` : ''}
   - If it says "klick auf den Link" → show the product beautifully, person looking satisfied, NOT smoking/sad
   - If it says "kein Filter wechseln" → show the device working effortlessly, forgotten in the background
 - End with: "9:16 vertical aspect ratio (TikTok/Reels format). No text, no watermark, no extra people."
+${rejection_feedback ? `\nIMPORTANT CORRECTION FROM EDITOR:\n${rejection_feedback}\nYou MUST address this feedback in the new prompt. Generate something clearly DIFFERENT from the rejected image.` : ''}
 
 Return ONLY the prompt text.` }] }],
       generationConfig: { temperature: 0.2 }

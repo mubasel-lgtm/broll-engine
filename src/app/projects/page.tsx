@@ -210,13 +210,42 @@ export default function ProjectsPage() {
     } catch (e) {
       console.error('Failed to save rejection:', e)
     }
-    // Proceed with the actual rejection (remove image)
-    setGeneratedImages(prev => { const n = { ...prev }; delete n[rejectModal.lineNumber]; return n })
-    setGeneratedStatus(prev => { const n = { ...prev }; delete n[rejectModal.lineNumber]; return n })
-    setSavingReject(false)
+    // Remove old image and auto-regenerate with improved prompt
+    const lineNum = rejectModal.lineNumber
+    const scriptLine = rejectModal.scriptLine
+    const drFunction = rejectModal.drFunction
+    const feedback = `PREVIOUS IMAGE WAS REJECTED. Reason: ${rejectReason}.${rejectNote ? ` Editor note: ${rejectNote}.` : ''} Generate a DIFFERENT image that avoids this issue.`
+
+    setGeneratedImages(prev => { const n = { ...prev }; delete n[lineNum]; return n })
+    setGeneratedStatus(prev => { const n = { ...prev }; delete n[lineNum]; return n })
     setRejectModal(null)
     setRejectReason('')
     setRejectNote('')
+    setSavingReject(false)
+
+    // Auto-regenerate with rejection feedback baked into the prompt
+    setGenerating(prev => ({ ...prev, [lineNum]: true }))
+    try {
+      const resp = await fetch('/api/generate-broll', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          script_line: scriptLine,
+          dr_function: drFunction,
+          aroll_image: arollBase64,
+          speaker_description: speakerDesc,
+          product_image: productImageB64,
+          product_physical: selectedProd?.physical_notes,
+          rejection_feedback: feedback,
+        })
+      })
+      const data = await resp.json()
+      if (data.success) {
+        setGeneratedImages(prev => ({ ...prev, [lineNum]: `data:${data.image.mimeType};base64,${data.image.data}` }))
+        setGeneratedStatus(prev => ({ ...prev, [lineNum]: 'review' }))
+      }
+    } catch (e) { console.error('Regeneration failed:', e) }
+    setGenerating(prev => ({ ...prev, [lineNum]: false }))
   }
 
   return (
@@ -578,24 +607,6 @@ export default function ProjectsPage() {
                                     setRejectModal({ lineNumber: line.line_number, scriptLine: line.text, drFunction: line.dr_function })
                                   }} className="flex-1 text-xs py-2 rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 font-medium transition-colors">Reject</button>
                                 </div>
-                                <button onClick={async () => {
-                                  setGenerating(prev => ({ ...prev, [line.line_number]: true }))
-                                  setGeneratedImages(prev => { const n = { ...prev }; delete n[line.line_number]; return n })
-                                  setGeneratedStatus(prev => { const n = { ...prev }; delete n[line.line_number]; return n })
-                                  try {
-                                    const resp = await fetch('/api/generate-broll', {
-                                      method: 'POST',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({ script_line: line.text, dr_function: line.dr_function, aroll_image: arollBase64, speaker_description: speakerDesc, product_image: productImageB64, product_physical: selectedProd?.physical_notes })
-                                    })
-                                    const data = await resp.json()
-                                    if (data.success) {
-                                      setGeneratedImages(prev => ({ ...prev, [line.line_number]: `data:${data.image.mimeType};base64,${data.image.data}` }))
-                                      setGeneratedStatus(prev => ({ ...prev, [line.line_number]: 'review' }))
-                                    }
-                                  } catch (e) { console.error(e) }
-                                  setGenerating(prev => ({ ...prev, [line.line_number]: false }))
-                                }} className="w-full text-xs py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 font-medium transition-colors border border-gray-200">Regenerate</button>
                               </div>
                             </div>
                           ) : (
