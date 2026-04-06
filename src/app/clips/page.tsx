@@ -214,7 +214,7 @@ export default function ClipsPage() {
                         onClick={() => setPreviewClip(clip)}>
                         <div className="aspect-video bg-gray-100 relative overflow-hidden">
                           {clip.drive_url ? (
-                            <img src={getDriveStreamUrl(clip.drive_url)!} alt="" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                            <video src={getDriveStreamUrl(clip.drive_url)!} preload="metadata" muted className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" playsInline />
                           ) : clip.thumbnail_url ? (
                             <img src={clip.thumbnail_url} alt="" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                           ) : (

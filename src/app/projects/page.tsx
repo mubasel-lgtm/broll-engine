@@ -490,7 +490,7 @@ export default function ProjectsPage() {
                               onClick={() => setPreviewClip(clip)}
                             >
                               {clip.drive_url ? (
-                                <img src={`/api/proxy-video?url=${encodeURIComponent(clip.drive_url)}`} alt="" className="w-full h-full object-cover" />
+                                <video src={`/api/proxy-video?url=${encodeURIComponent(clip.drive_url)}`} preload="metadata" muted className="w-full h-full object-cover" playsInline />
                               ) : clip.thumbnail_url ? (
                                 <img src={clip.thumbnail_url} alt="" className="w-full h-full object-cover" />
                               ) : (
