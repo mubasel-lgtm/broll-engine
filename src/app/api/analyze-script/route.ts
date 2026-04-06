@@ -129,7 +129,9 @@ CLIP LIBRARY (${clipCatalog.length} clips — all are videos, no images):
 ${JSON.stringify(clipCatalog)}
 
 Return JSON array. For each segment:
-{"line_number": 1, "text": "exact script text for this segment", "dr_function": "HOOK|PROBLEM|MECHANISM|PRODUCT|OUTCOME|SOCIAL_PROOF|CTA|LIFESTYLE", "search_tags": ["relevant", "visual", "tags"], "matched_clip_ids": [id1, id2, id3, id4, id5]}
+{"line_number": 1, "text": "exact script text for this segment", "text_en": "English translation of this segment", "dr_function": "HOOK|PROBLEM|MECHANISM|PRODUCT|OUTCOME|SOCIAL_PROOF|CTA|LIFESTYLE", "search_tags": ["relevant", "visual", "tags"], "matched_clip_ids": [id1, id2, id3, id4, id5]}
+
+IMPORTANT: "text_en" must be a natural English translation of the German script text. This helps the Filipino video editors understand what the line means.
 
 Split by visual scene changes. One scene = one segment. Not too fine, not too coarse.${learningsContext}`
 
@@ -138,6 +140,7 @@ Split by visual scene changes. One scene = one segment. Not too fine, not too co
   let lines: Array<{
     line_number: number
     text: string
+    text_en: string
     dr_function: string
     search_tags: string[]
     matched_clip_ids: number[]
@@ -172,6 +175,7 @@ Split by visual scene changes. One scene = one segment. Not too fine, not too co
     return {
       line_number: line.line_number,
       text: line.text,
+      text_en: line.text_en || '',
       dr_function: line.dr_function,
       search_tags: line.search_tags || [],
       matches

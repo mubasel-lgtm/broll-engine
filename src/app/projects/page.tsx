@@ -26,6 +26,7 @@ type ClipMatch = {
 type ScriptLine = {
   line_number: number
   text: string
+  text_en?: string
   dr_function: string
   search_tags: string[]
   needs: string
@@ -603,7 +604,8 @@ export default function ProjectsPage() {
                     <div className="flex items-start gap-4">
                       <span className="text-gray-300 font-mono text-sm mt-0.5 w-6 text-right flex-shrink-0">{line.line_number}</span>
                       <div className="flex-1">
-                        <p className="text-gray-800 mb-3 leading-relaxed">&quot;{line.text}&quot;</p>
+                        <p className="text-gray-800 mb-1 leading-relaxed">&ldquo;{line.text}&rdquo;</p>
+                        {line.text_en && <p className="text-gray-400 text-sm mb-3 italic">{line.text_en}</p>}
                         <div className="flex gap-2 flex-wrap">
                           <span className={`text-xs px-2.5 py-1 rounded-lg border font-medium ${drColor(line.dr_function)}`}>
                             {line.dr_function}
@@ -679,8 +681,8 @@ export default function ProjectsPage() {
                             <div>
                               <video src={generatedVideos[line.line_number]} controls className="w-full aspect-video object-cover rounded-t-xl" playsInline />
                               <div className="p-3">
-                                <a href={generatedVideos[line.line_number]} download={`broll_${line.line_number}.mp4`}
-                                  className="text-xs px-3 py-1.5 rounded-lg w-full block text-center bg-emerald-600 text-white hover:bg-emerald-700 font-medium transition-colors">Download Video</a>
+                                <a href={generatedVideos[line.line_number]} target="_blank" rel="noopener noreferrer"
+                                  className="text-xs px-3 py-1.5 rounded-lg w-full block text-center bg-emerald-600 text-white hover:bg-emerald-700 font-medium transition-colors">Show Video</a>
                               </div>
                             </div>
                           ) : generatedImages[line.line_number] ? (

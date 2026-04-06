@@ -32,6 +32,9 @@ export async function POST(req: NextRequest) {
     (dr_function === 'PROBLEM' && mentionsPerson)
   )
 
+  // Detect multi-person scenes (friend visiting, conversation, etc.)
+  const needsMultiplePeople = /Freundin|Besuch|gefragt|Freund|zusammen|gemeinsam/i.test(script_line)
+
   // Build reference instructions for prompt generation
   let refInstructions = ''
   if (needsSpeaker && needsProduct) {
@@ -40,6 +43,13 @@ export async function POST(req: NextRequest) {
 - Do NOT describe the product's design — the reference image handles that.
 - The product is: ${product_physical || 'a compact plug-in device'}
 - Describe the SCENE, EMOTION, and the RELATIONSHIP between person and product.`
+  } else if (needsSpeaker && needsMultiplePeople) {
+    refInstructions = `A speaker reference image will be provided. This scene has MULTIPLE PEOPLE.
+- The reference person is the MAIN speaker/protagonist — they MUST appear in the image looking like the reference.
+- Add a SECOND person (friend/visitor) naturally in the scene — describe the second person's appearance, pose, and position.
+- Do NOT describe the speaker's appearance — the reference image handles that.
+- IMPORTANT: Both people must be clearly visible and interacting naturally.
+- Describe the SCENE, EMOTION, INTERACTION between the two people, and ENVIRONMENT.`
   } else if (needsSpeaker) {
     refInstructions = `A speaker reference image will be provided.
 - Do NOT describe the speaker's appearance — the reference image handles that.
