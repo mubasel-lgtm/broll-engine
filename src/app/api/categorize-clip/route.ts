@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { uploadClipToDrive } from '@/lib/drive'
 
 const GEMINI_KEY = process.env.GEMINI_KEY!
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`
@@ -221,19 +222,16 @@ IMPORTANT:
     return NextResponse.json({ error: `DB insert failed: ${error.message}`, category }, { status: 500 })
   }
 
-  // --- UPLOAD TO GOOGLE DRIVE (fire and forget) ---
+  // --- UPLOAD TO GOOGLE DRIVE (inline, before response) ---
+  let driveUrl = ''
   if (inserted && (storageUrl || externalUrl) && process.env.GOOGLE_DRIVE_REFRESH_TOKEN) {
     const categorizedFilename = buildCategorizedFilename(category, inserted.id, clipData.filename)
-    fetch(`${req.nextUrl.origin}/api/upload-to-drive`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        clip_id: inserted.id,
-        file_url: storageUrl || externalUrl,
-        filename: categorizedFilename,
-      })
-    }).catch(e => console.error('Drive upload failed:', e))
+    try {
+      driveUrl = await uploadClipToDrive(inserted.id, storageUrl || externalUrl, categorizedFilename) || ''
+    } catch (e) {
+      console.error('Drive upload failed:', e)
+    }
   }
 
-  return NextResponse.json({ success: true, clip: inserted, category, storage_url: storageUrl })
+  return NextResponse.json({ success: true, clip: { ...inserted, drive_url: driveUrl || inserted.drive_url }, category, storage_url: storageUrl, drive_url: driveUrl })
 }
