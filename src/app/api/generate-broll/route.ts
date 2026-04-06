@@ -15,14 +15,10 @@ export async function POST(req: NextRequest) {
   const hasAroll = !!aroll_image
   const hasProduct = !!product_image
 
-  // Determine what references to use based on DR function and script content
-  // "Gerät" alone doesn't mean show the product — context matters
-  const mentionsProductInUse = /einsteck|angeschlossen|Steckdose|Filter|eingesteckt|läuft|Produkt|Link/i.test(script_line)
-  const mentionsDelivery = /kam an|bestellt|Lieferung|Paket|geliefert|ankam/i.test(script_line)
-  const needsProduct = hasProduct && !mentionsDelivery && (
+  // Only send product reference image when the DR function explicitly calls for showing the product
+  const needsProduct = hasProduct && (
     dr_function === 'PRODUCT' ||
-    dr_function === 'CTA' ||
-    mentionsProductInUse
+    dr_function === 'CTA'
   )
   // Only include speaker reference when the scene clearly shows a PERSON
   // NEVER for: MECHANISM, PRODUCT (product-only shots), pure nature/science scenes
@@ -100,7 +96,8 @@ ${refPrefix ? `- Start with: "${refPrefix}"` : ''}
 - iPhone-quality casual photography, bright natural daylight, UGC amateur style
 - NOT professionally lit, NOT cinematic, NOT dark or moody
 - All people: white, German, appropriate age
-- CRITICAL: The visual MUST match the MEANING of the script line
+- CRITICAL: This line is ONE single moment from a longer script. Show ONLY what THIS line describes — nothing before it, nothing after it. Do not anticipate the next scene or add context from surrounding lines.
+${needsSpeaker ? '- IMPORTANT: A reference image of the speaker is provided. The person in your image MUST look EXACTLY like the reference — same face, same hair, same build. This is the same person throughout the entire ad.' : ''}
 - End with: "9:16 vertical aspect ratio (TikTok/Reels format). No text, no watermark, no extra people."
 
 Return ONLY the prompt text.`
