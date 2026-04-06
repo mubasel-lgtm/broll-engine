@@ -69,32 +69,39 @@ Use this feedback to AVOID making the same mistakes. If an editor rejected a cli
 YOUR JOB: Split the script into B-roll segments. Each segment = ONE distinct visual scene that a video editor would cut to.
 
 SPLITTING RULES:
-- Each segment should show ONE clear visual scene (typically 5-15 words)
-- Split when the VISUAL SCENE changes (different location, action, person, or object)
-- Keep together words that describe the SAME visual moment
-- Short fragments like "und gewartet" or "im Monat" are NOT their own segment — merge them with the previous or next segment
-- A complete thought that describes one scene = one segment
+- Each segment = ONE visual scene that a video editor would show as B-roll
+- Split when the VISUAL WORLD changes: different subject, different imagery, different setting
+- Keep together words that describe the SAME visual (same scene, same imagery)
+- Short fragments without their own visual ("und gewartet", "im Monat") merge with their neighbor
+- IMPORTANT: Even within ONE sentence, split if the IMAGERY changes! A long sentence can be 2-3 segments if it talks about different visuals.
 
-EXAMPLE — correct splitting:
+THE KEY QUESTION for each split decision: "Would a video editor cut to a DIFFERENT clip here?" If yes → split.
+
+EXAMPLE 1 — splitting within a sentence:
+Script: "Der Grund dafür ist dass das Gerät nicht mit Filtern arbeitet, sondern mit Negativ-Ionen — bevor du fragst was das ist, das sind dieselben Ionen die nach einem Gewitter in der Luft entstehen, genau deshalb riecht es danach draußen so frisch."
+Split:
+1. "Der Grund dafür ist dass das Gerät nicht mit Filtern arbeitet, sondern mit Negativ-Ionen" → device/technology visual, how the product works
+2. "bevor du fragst was das ist, das sind dieselben Ionen die nach einem Gewitter in der Luft entstehen, genau deshalb riecht es danach draußen so frisch" → thunderstorm, nature, fresh outdoor air
+WHY: The imagery shifts from TECHNOLOGY to NATURE — that's a cut.
+
+EXAMPLE 2 — multiple actions:
 Script: "Das Gerät kam drei Tage nachdem ich es bestellt habe an, ich hab es an die Steckdose angeschlossen, und dann einfach wie immer weitergeraucht und gewartet."
 Split:
 1. "Das Gerät kam drei Tage nachdem ich es bestellt habe an" → package arriving, delivery
 2. "ich hab es an die Steckdose angeschlossen" → plugging device into outlet
 3. "und dann einfach wie immer weitergeraucht und gewartet" → person smoking on couch, waiting
 
+EXAMPLE 3 — one emotion stays together:
+- "und ich hab schon gedacht dass das genauso endet wie alles andere was ich vorher probiert hatte" → ONE segment (same emotion, same visual: disappointed person)
+- "für unter einem Euro Strom im Monat" → ONE segment (cost visual)
+- "Meine Freundin hat mich gefragt wann ich eigentlich aufgehört habe" → ONE segment (conversation)
+
 WRONG — too granular:
-- "und gewartet" as its own segment ← WRONG, not a standalone visual
-- "im Monat" as its own segment ← WRONG, belongs with the price
+- "und gewartet" alone ← not a standalone visual
+- "im Monat" alone ← belongs with price
 
-WRONG — too long:
-- "Das Gerät kam an, ich hab es an die Steckdose angeschlossen, und dann weitergeraucht" ← WRONG, three different visuals
-
-MORE CORRECT EXAMPLES:
-- "und ich hab schon gedacht dass das genauso endet wie alles andere was ich vorher probiert hatte" → ONE segment (one emotion: disappointment about past failures)
-- "für unter einem Euro Strom im Monat" → ONE segment (cost/value visual)
-- "Die binden sich an Geruchspartikel und neutralisieren sie" → ONE segment (same scientific animation)
-- "Meine Freundin hat mich gefragt wann ich eigentlich aufgehört habe" → ONE segment (one conversation)
-- "als eine Freundin zu Besuch kam die weiß dass ich rauche" → ONE segment (friend arriving)
+WRONG — too long (different visuals crammed together):
+- "Gerät arbeitet mit Negativ-Ionen, das sind die Ionen nach einem Gewitter" ← WRONG: technology + nature = two different visuals, must split!
 
 For EACH segment, pick the TOP 5 best matching clips from the library by their ID.
 
