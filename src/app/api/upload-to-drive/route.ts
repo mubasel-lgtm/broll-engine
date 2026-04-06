@@ -44,7 +44,7 @@ async function uploadToDrive(accessToken: string, filename: string, fileBuffer: 
     Buffer.from(`\r\n--${boundary}--`),
   ])
 
-  const resp = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
+  const resp = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink&supportsAllDrives=true', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${accessToken}`,
