@@ -5,7 +5,8 @@ const NANO_URL = `https://generativelanguage.googleapis.com/v1beta/models/nano-b
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`
 
 export async function POST(req: NextRequest) {
-  const { script_line, dr_function, aroll_image, speaker_description, product_image, product_physical, rejection_feedback } = await req.json()
+  const { script_line, dr_function, aroll_image, speaker_description, product_image, product_physical, rejection_feedback, previous_prompt, chat_history } = await req.json()
+  // chat_history: Array of { prompt: string, rejection: string } from previous attempts
 
   if (!script_line) {
     return NextResponse.json({ error: 'Missing script_line' }, { status: 400 })
@@ -81,12 +82,8 @@ export async function POST(req: NextRequest) {
     'LIFESTYLE': 'Lifestyle shot: Aspirational but authentic daily life scene. Bright, natural, casual.'
   }
 
-  // Step 1: Generate prompt with Gemini
-  const promptResp = await fetch(GEMINI_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: `You are a B-roll image prompt engineer for direct-response ads.
+  // Step 1: Generate prompt with Gemini (chat-style for iterations)
+  const systemPrompt = `You are a B-roll image prompt engineer for direct-response ads.
 
 Write a Nano Banana Pro image generation prompt for this script line:
 "${script_line}"
@@ -102,13 +99,43 @@ ${refPrefix ? `- Start with: "${refPrefix}"` : ''}
 - NOT professionally lit, NOT cinematic, NOT dark or moody
 - All people: white, German, appropriate age
 - CRITICAL: The visual MUST match the MEANING of the script line
-  - If it says "steckst das einmal ein" → show someone plugging the device into a wall outlet
-  - If it says "klick auf den Link" → show the product beautifully, person looking satisfied, NOT smoking/sad
-  - If it says "kein Filter wechseln" → show the device working effortlessly, forgotten in the background
 - End with: "9:16 vertical aspect ratio (TikTok/Reels format). No text, no watermark, no extra people."
-${rejection_feedback ? `\nIMPORTANT CORRECTION FROM EDITOR:\n${rejection_feedback}\nYou MUST address this feedback in the new prompt. Generate something clearly DIFFERENT from the rejected image.` : ''}
 
-Return ONLY the prompt text.` }] }],
+Return ONLY the prompt text.`
+
+  // Build chat-style contents: system → previous attempts → current request
+  const contents: Array<{ role: string; parts: Array<{ text: string }> }> = []
+
+  if (chat_history?.length > 0 || previous_prompt) {
+    // First turn: original request
+    contents.push({ role: 'user', parts: [{ text: systemPrompt }] })
+
+    if (previous_prompt && !chat_history?.length) {
+      // Simple case: one previous attempt
+      contents.push({ role: 'model', parts: [{ text: previous_prompt }] })
+      contents.push({ role: 'user', parts: [{ text: `The editor REJECTED the image generated from your prompt. Their feedback:\n${rejection_feedback}\n\nIMPORTANT:\n- Keep the same reference images (speaker/product) — do NOT change who appears\n- MODIFY the prompt based on the feedback — do NOT write from scratch\n- Address the specific issue the editor raised\n- Return ONLY the updated prompt text.` }] })
+    } else if (chat_history?.length > 0) {
+      // Multiple iterations: full chat history
+      for (const entry of chat_history) {
+        contents.push({ role: 'model', parts: [{ text: entry.prompt }] })
+        contents.push({ role: 'user', parts: [{ text: `REJECTED. Feedback: ${entry.rejection}\n\nModify the prompt to fix this issue. Keep reference images. Return ONLY the updated prompt.` }] })
+      }
+      // Current rejection
+      if (rejection_feedback) {
+        contents.push({ role: 'model', parts: [{ text: previous_prompt || chat_history[chat_history.length - 1].prompt }] })
+        contents.push({ role: 'user', parts: [{ text: `REJECTED again. Feedback: ${rejection_feedback}\n\nModify the prompt to fix this. Keep the same person from reference image. Return ONLY the updated prompt.` }] })
+      }
+    }
+  } else {
+    // First generation: single turn
+    contents.push({ role: 'user', parts: [{ text: systemPrompt }] })
+  }
+
+  const promptResp = await fetch(GEMINI_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents,
       generationConfig: { temperature: 0.2 }
     })
   })

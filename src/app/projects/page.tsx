@@ -57,6 +57,9 @@ export default function ProjectsPage() {
   const [history, setHistory] = useState<Array<{id: number; name: string; script: string; status: string; created_at: string; brand_name?: string; product_name?: string}>>([])
   // Map line_number → project_result DB row id (for persisting selections/generations)
   const [resultIds, setResultIds] = useState<Record<number, number>>({})
+  // Chat history per line: previous prompts + rejections for iterative generation
+  const [chatHistories, setChatHistories] = useState<Record<number, Array<{ prompt: string; rejection: string }>>>({})
+  const [lastPrompts, setLastPrompts] = useState<Record<number, string>>({})
 
   // Rejection feedback state
   const [rejectModal, setRejectModal] = useState<{ lineNumber: number; clipId?: number; scriptLine: string; drFunction: string } | null>(null)
@@ -325,11 +328,19 @@ export default function ProjectsPage() {
     } catch (e) {
       console.error('Failed to save rejection:', e)
     }
-    // Remove old image and auto-regenerate with improved prompt
+    // Build chat history for this line
     const lineNum = rejectModal.lineNumber
     const scriptLine = rejectModal.scriptLine
     const drFunction = rejectModal.drFunction
-    const feedback = `PREVIOUS IMAGE WAS REJECTED. Reason: ${rejectReason}.${rejectNote ? ` Editor note: ${rejectNote}.` : ''} Generate a DIFFERENT image that avoids this issue.`
+    const rejectionText = `${rejectReason}${rejectNote ? `. ${rejectNote}` : ''}`
+    const prevPrompt = lastPrompts[lineNum] || ''
+
+    // Add current attempt to chat history
+    const history = [...(chatHistories[lineNum] || [])]
+    if (prevPrompt) {
+      history.push({ prompt: prevPrompt, rejection: rejectionText })
+    }
+    setChatHistories(prev => ({ ...prev, [lineNum]: history }))
 
     setGeneratedImages(prev => { const n = { ...prev }; delete n[lineNum]; return n })
     setGeneratedStatus(prev => { const n = { ...prev }; delete n[lineNum]; return n })
@@ -338,7 +349,7 @@ export default function ProjectsPage() {
     setRejectNote('')
     setSavingReject(false)
 
-    // Auto-regenerate with rejection feedback baked into the prompt
+    // Auto-regenerate with full chat history
     setGenerating(prev => ({ ...prev, [lineNum]: true }))
     try {
       const resp = await fetch('/api/generate-broll', {
@@ -351,7 +362,9 @@ export default function ProjectsPage() {
           speaker_description: speakerDesc,
           product_image: productImageB64,
           product_physical: selectedProd?.physical_notes,
-          rejection_feedback: feedback,
+          rejection_feedback: rejectionText,
+          previous_prompt: prevPrompt,
+          chat_history: history,
         })
       })
       const data = await resp.json()
@@ -359,6 +372,7 @@ export default function ProjectsPage() {
         const imgDataUrl = `data:${data.image.mimeType};base64,${data.image.data}`
         setGeneratedImages(prev => ({ ...prev, [lineNum]: imgDataUrl }))
         setGeneratedStatus(prev => ({ ...prev, [lineNum]: 'review' }))
+        setLastPrompts(prev => ({ ...prev, [lineNum]: data.prompt_used }))
         updateResult(lineNum, { generated_image_url: imgDataUrl, status: 'review' })
       }
     } catch (e) { console.error('Regeneration failed:', e) }
@@ -748,6 +762,7 @@ export default function ProjectsPage() {
                                     const imgUrl = `data:${data.image.mimeType};base64,${data.image.data}`
                                     setGeneratedImages(prev => ({ ...prev, [lineIdx]: imgUrl }))
                                     setGeneratedStatus(prev => ({ ...prev, [lineIdx]: 'review' }))
+                                    setLastPrompts(prev => ({ ...prev, [lineIdx]: data.prompt_used }))
                                     updateResult(lineIdx, { generated_image_url: imgUrl, status: 'review' })
                                   }
                                 } catch (e) { console.error(e) }
@@ -781,6 +796,7 @@ export default function ProjectsPage() {
                                 const imgUrl = `data:${data.image.mimeType};base64,${data.image.data}`
                                 setGeneratedImages(prev => ({ ...prev, [lineIdx]: imgUrl }))
                                 setGeneratedStatus(prev => ({ ...prev, [lineIdx]: 'review' }))
+                                setLastPrompts(prev => ({ ...prev, [lineIdx]: data.prompt_used }))
                                 updateResult(lineIdx, { generated_image_url: imgUrl, status: 'review' })
                               }
                             } catch (e) { console.error(e) }
