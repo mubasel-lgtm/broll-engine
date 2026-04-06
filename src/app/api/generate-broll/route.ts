@@ -21,9 +21,15 @@ export async function POST(req: NextRequest) {
     dr_function === 'CTA' ||
     mentionsProduct
   )
-  const needsSpeaker = hasAroll && (
-    dr_function !== 'MECHANISM' ||
-    /ich|mein|mir/i.test(script_line)
+  // Only include speaker reference when the scene clearly shows a PERSON
+  // NEVER for: MECHANISM, PRODUCT (product-only shots), pure nature/science scenes
+  const mentionsPerson = /ich|mein|mir|Freundin|Besuch|gefragt|gelacht|gedacht|bemerkt/i.test(script_line)
+  const personDrFunctions = ['SOCIAL_PROOF', 'HOOK']
+  const needsSpeaker = hasAroll && mentionsPerson && (
+    personDrFunctions.includes(dr_function) ||
+    (dr_function === 'LIFESTYLE' && mentionsPerson) ||
+    (dr_function === 'OUTCOME' && mentionsPerson) ||
+    (dr_function === 'PROBLEM' && mentionsPerson)
   )
 
   // Build reference instructions for prompt generation

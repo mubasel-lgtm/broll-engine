@@ -121,21 +121,26 @@ export default function ProjectsPage() {
     }
   }
 
+  const [currentProjectId, setCurrentProjectId] = useState<number | null>(null)
+
   async function analyzeScript() {
     if (!script.trim()) return
     setLoading(true)
 
-    // Save project to Supabase
+    // Save project to Supabase and get the ID
     const prod = products.find(p => p.id === selectedProduct)
     const brand = prod ? brands.find(b => b.id === prod.brand_id) : null
-    await supabase.from('projects').insert({
+    const { data: proj } = await supabase.from('projects').insert({
       name: projectName || 'Untitled',
       product_id: selectedProduct,
       brand_id: brand?.id || null,
       script,
       speaker_description: speakerDesc,
       status: 'active'
-    })
+    }).select().single()
+
+    const projectId = proj?.id
+    if (projectId) setCurrentProjectId(projectId)
 
     const resp = await fetch('/api/analyze-script', {
       method: 'POST',
@@ -146,6 +151,91 @@ export default function ProjectsPage() {
     if (data.lines) {
       setLines(data.lines)
       setStep('results')
+
+      // Save results to DB for later reopening
+      if (projectId) {
+        fetch('/api/project-results', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ project_id: projectId, lines: data.lines })
+        }).catch(e => console.error('Failed to save results:', e))
+      }
+    }
+    setLoading(false)
+  }
+
+  async function loadProject(project: HistoryProject) {
+    setLoading(true)
+    setCurrentProjectId(project.id)
+    setProjectName(project.name)
+    setScript(project.script)
+
+    // Find and select the brand/product
+    const brandObj = brands.find(b => b.name === project.brand_name)
+    if (brandObj) {
+      setSelectedBrand(brandObj.id)
+      const prodObj = products.find(p => p.brand_id === brandObj.id && p.name === project.product_name)
+      if (prodObj) setSelectedProduct(prodObj.id)
+    }
+
+    // Load saved results
+    const resp = await fetch(`/api/project-results?project_id=${project.id}`)
+    const { results } = await resp.json()
+
+    if (results && results.length > 0) {
+      // Re-fetch full clip data for matched IDs
+      const allClipIds = results.flatMap((r: { matched_clip_ids: number[] }) => r.matched_clip_ids || [])
+      const uniqueIds = [...new Set(allClipIds)]
+
+      let clipMap = new Map()
+      if (uniqueIds.length > 0) {
+        const { data: clips } = await supabase
+          .from('clips')
+          .select('*')
+          .in('id', uniqueIds)
+        if (clips) clipMap = new Map(clips.map(c => [c.id, c]))
+      }
+
+      const loadedLines: ScriptLine[] = results.map((r: { line_number: number; script_text: string; dr_function: string; search_tags: string[]; matched_clip_ids: number[]; selected_clip_id: number | null; generated_image_url: string | null; generated_video_url: string | null }) => {
+        const matches = (r.matched_clip_ids || [])
+          .map((id: number, idx: number) => {
+            const clip = clipMap.get(id)
+            if (!clip) return null
+            return { ...clip, match_score: 10 - idx * 2 }
+          })
+          .filter(Boolean)
+
+        return {
+          line_number: r.line_number,
+          text: r.script_text,
+          dr_function: r.dr_function,
+          search_tags: r.search_tags || [],
+          matches,
+        }
+      })
+
+      setLines(loadedLines)
+
+      // Restore selections and generated content
+      const sel: Record<number, number | null> = {}
+      const imgs: Record<number, string> = {}
+      const vids: Record<number, string> = {}
+      const stats: Record<number, 'review' | 'accepted' | 'creating_video' | 'video_done' | 'video_failed'> = {}
+
+      results.forEach((r: { line_number: number; selected_clip_id: number | null; generated_image_url: string | null; generated_video_url: string | null }) => {
+        if (r.selected_clip_id) sel[r.line_number] = r.selected_clip_id
+        if (r.generated_image_url) { imgs[r.line_number] = r.generated_image_url; stats[r.line_number] = 'review' }
+        if (r.generated_video_url) { vids[r.line_number] = r.generated_video_url; stats[r.line_number] = 'video_done' }
+      })
+
+      setSelected(sel)
+      setGeneratedImages(imgs)
+      setGeneratedVideos(vids)
+      setGeneratedStatus(stats)
+      setStep('results')
+    } else {
+      // No saved results — re-analyze
+      setStep('setup')
     }
     setLoading(false)
   }
@@ -441,8 +531,10 @@ export default function ProjectsPage() {
                           <div key={product} className="ml-2 mb-2">
                             <div className="text-xs text-gray-400 mb-1">{product}</div>
                             {projects.map(p => (
-                              <div key={p.id} className="text-xs py-1.5 ml-2 border-b border-gray-100 last:border-0 flex justify-between">
-                                <span className="text-gray-700 truncate">{p.name}</span>
+                              <div key={p.id}
+                                onClick={() => loadProject(p)}
+                                className="text-xs py-1.5 ml-2 border-b border-gray-100 last:border-0 flex justify-between cursor-pointer hover:bg-indigo-50 hover:text-indigo-700 rounded px-1.5 -mx-1.5 transition-colors">
+                                <span className="text-gray-700 truncate group-hover:text-indigo-700">{p.name}</span>
                                 <span className="text-gray-300 flex-shrink-0 ml-2">{p.created_at?.slice(0, 10)}</span>
                               </div>
                             ))}
