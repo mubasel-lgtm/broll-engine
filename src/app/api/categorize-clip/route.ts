@@ -135,14 +135,46 @@ export async function POST(req: NextRequest) {
   const parts: Array<Record<string, unknown>> = []
   const mediaType = filetype || (safeFilename.match(/\.(mp4|mov|webm)$/i) ? 'video' : 'image')
 
-  if (video_url && !drive_url) {
-    // Send the actual video to Gemini for categorization
+  // Try to get the actual video for Gemini categorization
+  if (mediaType === 'video') {
     try {
-      const videoResp = await fetch(storageUrl || video_url)
-      if (videoResp.ok) {
-        const videoBuffer = Buffer.from(await videoResp.arrayBuffer())
-        const videoBase64 = videoBuffer.toString('base64')
-        parts.push({ inline_data: { mime_type: 'video/mp4', data: videoBase64 } })
+      let videoBuffer: Buffer | null = null
+
+      if (storageUrl) {
+        // From Supabase Storage
+        const resp = await fetch(storageUrl)
+        if (resp.ok) videoBuffer = Buffer.from(await resp.arrayBuffer())
+      } else if (video_url) {
+        // From Kling or other URL
+        const resp = await fetch(video_url)
+        if (resp.ok) videoBuffer = Buffer.from(await resp.arrayBuffer())
+      } else if (drive_url) {
+        // From Google Drive directly (using OAuth)
+        const { getGoogleAccessToken } = await import('@/lib/drive')
+        const accessToken = await getGoogleAccessToken()
+        if (accessToken) {
+          const fileId = extractDriveFileId(drive_url)
+          if (fileId) {
+            const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`, {
+              headers: { 'Authorization': `Bearer ${accessToken}` }
+            })
+            if (resp.ok) videoBuffer = Buffer.from(await resp.arrayBuffer())
+          }
+        }
+      }
+
+      if (videoBuffer && videoBuffer.length < 15_000_000) {
+        // Only send to Gemini if under 15MB (API limit)
+        parts.push({ inline_data: { mime_type: 'video/mp4', data: videoBuffer.toString('base64') } })
+
+        // Also save to storage if not already there
+        if (!storageUrl) {
+          const { error: upErr } = await getSupabase().storage.from('broll-clips').upload(storagePath, videoBuffer, { contentType: 'video/mp4', upsert: true })
+          if (!upErr) {
+            const { data: urlData } = getSupabase().storage.from('broll-clips').getPublicUrl(storagePath)
+            storageUrl = urlData.publicUrl
+          }
+        }
       }
     } catch (e) {
       console.error('Failed to load video for Gemini:', e)
