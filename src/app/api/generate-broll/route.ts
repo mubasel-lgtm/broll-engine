@@ -20,19 +20,13 @@ export async function POST(req: NextRequest) {
     dr_function === 'PRODUCT' ||
     dr_function === 'CTA'
   )
-  // Only include speaker reference when the scene clearly shows a PERSON
-  // NEVER for: MECHANISM, PRODUCT (product-only shots), pure nature/science scenes
-  const mentionsPerson = /ich|mein|mir|Freundin|Besuch|gefragt|gelacht|gedacht|bemerkt/i.test(script_line)
-  const personDrFunctions = ['SOCIAL_PROOF', 'HOOK']
-  const needsSpeaker = hasAroll && mentionsPerson && (
-    personDrFunctions.includes(dr_function) ||
-    (dr_function === 'LIFESTYLE' && mentionsPerson) ||
-    (dr_function === 'OUTCOME' && mentionsPerson) ||
-    (dr_function === 'PROBLEM' && mentionsPerson)
-  )
+  // Always include the A-Roll speaker reference UNLESS the scene is purely
+  // about science/mechanism or product-only shots with no person
+  const noPersonScenes = ['MECHANISM']
+  const needsSpeaker = hasAroll && !noPersonScenes.includes(dr_function)
 
   // Detect multi-person scenes (friend visiting, conversation, etc.)
-  const needsMultiplePeople = /Freundin|Besuch|gefragt|Freund|zusammen|gemeinsam/i.test(script_line)
+  const needsMultiplePeople = /Freundin|Besuch|Freund|zusammen|gemeinsam/i.test(script_line)
 
   // Build reference instructions for prompt generation
   let refInstructions = ''
