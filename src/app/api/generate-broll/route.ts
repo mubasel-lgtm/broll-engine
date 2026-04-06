@@ -90,8 +90,14 @@ ${refPrefix ? `- Start with: "${refPrefix}"` : ''}
 - iPhone-quality casual photography, bright natural daylight, UGC amateur style
 - NOT professionally lit, NOT cinematic, NOT dark or moody
 - All people: white, German, appropriate age
-- CRITICAL: This line is ONE single moment from a longer script. Show ONLY what THIS line describes — nothing before it, nothing after it. Do not anticipate the next scene or add context from surrounding lines.
-${needsSpeaker ? '- IMPORTANT: A reference image of the speaker is provided. The person in your image MUST look EXACTLY like the reference — same face, same hair, same build. This is the same person throughout the entire ad.' : ''}
+- CRITICAL: This line is ONE single moment. Show ONLY what THIS line describes.
+- VERY IMPORTANT: This image will be animated into a 3-second video. Design it as the STARTING FRAME of an action, NOT as a finished photograph.
+  - If people are talking → show them FACING each other, mid-conversation, mouths slightly open, engaged
+  - If someone receives something → show the moment BEFORE or DURING the action, not after
+  - If someone is reacting → show the beginning of the reaction, not the peak
+  - Think: "What does the first frame of this 3-second clip look like?"
+  - NEVER create a static "posed" image — create a moment that is about to MOVE
+${needsSpeaker ? '- IMPORTANT: A reference image of the speaker is provided. The person MUST look EXACTLY like the reference — same face, same hair, same build.' : ''}
 - End with: "9:16 vertical aspect ratio (TikTok/Reels format). No text, no watermark, no extra people."
 
 Return ONLY the prompt text.`

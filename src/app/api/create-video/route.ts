@@ -39,15 +39,24 @@ export async function POST(req: NextRequest) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      contents: [{ parts: [{ text: `Write a short motion prompt for animating this B-roll frame into a 3-second video.
+      contents: [{ parts: [{ text: `You are a video motion director. Write a motion prompt to bring this B-roll image to life as a 3-second video clip.
 
-Script line: "${script_line}"
+Script context: "${script_line}"
 DR function: ${dr_function}
 
-Rules:
-- 1-2 sentences max, keep it simple
-- Describe subtle camera movement and any subject motion
-- Must specify end state
+CRITICAL RULES:
+- Do NOT just describe camera movement (no "slow zoom in" or "pan left")
+- Describe what the PEOPLE and OBJECTS actually DO in the scene
+- The motion must match the script context:
+  - If two people are talking → they gesture, nod, one speaks while the other listens, natural conversation body language
+  - If someone receives a package → they reach out, take it, look at it
+  - If someone smokes → smoke rises, they bring cigarette to mouth or exhale
+  - If someone is relaxing → subtle breathing, shifting position, looking around
+  - If it shows a device → a light turns on, subtle glow pulsing
+- Think like a film director: what HAPPENS in these 3 seconds?
+- 2-3 sentences max
+- Include both subject motion AND camera (slight) if appropriate
+- Specify the end state
 
 Return ONLY the motion prompt text.` }] }],
       generationConfig: { temperature: 0.2 }

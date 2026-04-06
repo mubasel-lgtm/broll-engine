@@ -61,6 +61,10 @@ export default function ProjectsPage() {
   const [chatHistories, setChatHistories] = useState<Record<number, Array<{ prompt: string; rejection: string }>>>({})
   const [lastPrompts, setLastPrompts] = useState<Record<number, string>>({})
 
+  // Split line state
+  const [splitModal, setSplitModal] = useState<{ lineIdx: number; text: string } | null>(null)
+  const [splitPosition, setSplitPosition] = useState(0)
+
   // Rejection feedback state
   const [rejectModal, setRejectModal] = useState<{ lineNumber: number; clipId?: number; scriptLine: string; drFunction: string } | null>(null)
   const [rejectReason, setRejectReason] = useState('')
@@ -129,6 +133,38 @@ export default function ProjectsPage() {
   }
 
   const [currentProjectId, setCurrentProjectId] = useState<number | null>(null)
+
+  async function splitLine(lineIdx: number, position: number) {
+    const line = lines[lineIdx]
+    const text = line.text
+    const part1 = text.substring(0, position).trim()
+    const part2 = text.substring(position).trim()
+    if (!part1 || !part2) return
+
+    // Re-match both parts
+    setLoading(true)
+    setSplitModal(null)
+    try {
+      const prod = products.find(p => p.id === selectedProduct)
+      const brand = prod ? brands.find(b => b.id === prod.brand_id) : null
+
+      const resp = await fetch('/api/analyze-script', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ script: `${part1}\n${part2}`, product_id: selectedProduct, brand_id: brand?.id || selectedBrand })
+      })
+      const data = await resp.json()
+      if (data.lines && data.lines.length >= 2) {
+        // Replace the original line with the two new ones
+        const newLines = [...lines]
+        newLines.splice(lineIdx, 1, ...data.lines)
+        setLines(newLines)
+      }
+    } catch (e) {
+      console.error('Split failed:', e)
+    }
+    setLoading(false)
+  }
 
   function updateResult(lineNumber: number, update: Record<string, unknown>) {
     const resultId = resultIds[lineNumber]
@@ -618,7 +654,15 @@ export default function ProjectsPage() {
                     <div className="flex items-start gap-4">
                       <span className="text-gray-300 font-mono text-sm mt-0.5 w-6 text-right flex-shrink-0">{lineIdx + 1}</span>
                       <div className="flex-1">
-                        <p className="text-gray-800 mb-1 leading-relaxed">&ldquo;{line.text}&rdquo;</p>
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="text-gray-800 mb-1 leading-relaxed">&ldquo;{line.text}&rdquo;</p>
+                          {line.text.length > 20 && (
+                            <button onClick={() => { setSplitModal({ lineIdx, text: line.text }); setSplitPosition(Math.floor(line.text.length / 2)) }}
+                              className="flex-shrink-0 text-xs text-gray-400 hover:text-indigo-600 px-2 py-1 rounded-lg hover:bg-indigo-50 transition-colors" title="Split this line">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="12" y1="2" x2="12" y2="22"/><polyline points="8 6 12 2 16 6"/><polyline points="8 18 12 22 16 18"/></svg>
+                            </button>
+                          )}
+                        </div>
                         {line.text_en && <p className="text-gray-400 text-sm mb-3 italic">{line.text_en}</p>}
                         <div className="flex gap-2 flex-wrap">
                           <span className={`text-xs px-2.5 py-1 rounded-lg border font-medium ${drColor(line.dr_function)}`}>
@@ -819,6 +863,49 @@ export default function ProjectsPage() {
           </>
         )}
       </main>
+
+      {/* Split Line Modal */}
+      {splitModal && (
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-8" onClick={() => setSplitModal(null)}>
+          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-gray-200 animate-fade-in" onClick={e => e.stopPropagation()}>
+            <div className="p-6">
+              <h3 className="text-[16px] font-semibold tracking-tight mb-4">Split Line</h3>
+              <p className="text-xs text-gray-400 mb-4">Click on the text where you want to split:</p>
+              <div className="bg-gray-50 rounded-xl p-4 mb-4 border border-gray-200">
+                <p className="text-sm text-gray-800 leading-relaxed cursor-text select-none">
+                  {splitModal.text.split('').map((char, i) => (
+                    <span
+                      key={i}
+                      onClick={() => setSplitPosition(i)}
+                      className={`hover:bg-indigo-100 ${i === splitPosition ? 'bg-indigo-500 text-white' : ''}`}
+                    >{char}</span>
+                  ))}
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+                  <p className="text-xs text-emerald-600 font-medium mb-1">Part 1</p>
+                  <p className="text-xs text-gray-700">{splitModal.text.substring(0, splitPosition).trim() || '...'}</p>
+                </div>
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+                  <p className="text-xs text-blue-600 font-medium mb-1">Part 2</p>
+                  <p className="text-xs text-gray-700">{splitModal.text.substring(splitPosition).trim() || '...'}</p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => splitLine(splitModal.lineIdx, splitPosition)}
+                  disabled={!splitModal.text.substring(0, splitPosition).trim() || !splitModal.text.substring(splitPosition).trim() || loading}
+                  className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-40 flex items-center justify-center gap-2"
+                >
+                  {loading ? <><div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent"></div> Splitting...</> : 'Split & Re-Match'}
+                </button>
+                <button onClick={() => setSplitModal(null)} className="px-5 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-500 font-medium hover:bg-gray-50 transition-colors">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Rejection Feedback Modal */}
       {rejectModal && (
