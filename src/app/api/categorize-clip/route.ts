@@ -131,15 +131,29 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // --- CATEGORIZE WITH GEMINI ---
+  // --- CATEGORIZE WITH GEMINI (prefer video over image) ---
   const parts: Array<Record<string, unknown>> = []
+  const mediaType = filetype || (safeFilename.match(/\.(mp4|mov|webm)$/i) ? 'video' : 'image')
 
-  if (image_base64) {
-    const mimeType = filetype === 'video' ? 'video/mp4' : 'image/png'
-    parts.push({ inline_data: { mime_type: mimeType, data: image_base64 } })
+  if (video_url && !drive_url) {
+    // Send the actual video to Gemini for categorization
+    try {
+      const videoResp = await fetch(storageUrl || video_url)
+      if (videoResp.ok) {
+        const videoBuffer = Buffer.from(await videoResp.arrayBuffer())
+        const videoBase64 = videoBuffer.toString('base64')
+        parts.push({ inline_data: { mime_type: 'video/mp4', data: videoBase64 } })
+      }
+    } catch (e) {
+      console.error('Failed to load video for Gemini:', e)
+    }
   }
 
-  const mediaType = filetype || (safeFilename.match(/\.(mp4|mov|webm)$/i) ? 'video' : 'image')
+  // Fallback to image if no video was added
+  if (parts.length === 0 && image_base64) {
+    const mimeType = mediaType === 'video' ? 'video/mp4' : 'image/png'
+    parts.push({ inline_data: { mime_type: mimeType, data: image_base64 } })
+  }
 
   parts.push({
     text: `You are a B-roll clip categorizer for direct-response video ads. Analyze this ${mediaType} and categorize it.
