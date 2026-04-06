@@ -489,7 +489,9 @@ export default function ProjectsPage() {
                               className="aspect-video bg-gray-100 rounded-t-xl overflow-hidden relative cursor-pointer"
                               onClick={() => setPreviewClip(clip)}
                             >
-                              {clip.thumbnail_url ? (
+                              {clip.drive_url ? (
+                                <img src={`/api/proxy-video?url=${encodeURIComponent(clip.drive_url)}`} alt="" className="w-full h-full object-cover" />
+                              ) : clip.thumbnail_url ? (
                                 <img src={clip.thumbnail_url} alt="" className="w-full h-full object-cover" />
                               ) : (
                                 <div className="w-full h-full flex items-center justify-center text-gray-300 text-xs">No preview</div>

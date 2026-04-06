@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getGoogleAccessToken } from '@/lib/drive'
 
 export const dynamic = 'force-dynamic'
 
@@ -8,29 +9,34 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Missing url param' }, { status: 400 })
   }
 
-  const match = driveUrl.match(/\/d\/([^/]+)/)
+  const match = driveUrl.match(/\/d\/([a-zA-Z0-9_-]+)/)
   if (!match) {
     return NextResponse.json({ error: 'Invalid drive URL' }, { status: 400 })
   }
 
   const fileId = match[1]
-  const downloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`
 
   try {
-    // First, follow redirects to get the actual download URL
-    const headResp = await fetch(downloadUrl, { method: 'GET', redirect: 'follow' })
-
-    if (!headResp.ok) {
-      return NextResponse.json({ error: `Drive returned ${headResp.status}` }, { status: 502 })
+    // Use Drive API v3 with OAuth token for reliable access (including Shared Drives)
+    const accessToken = await getGoogleAccessToken()
+    if (!accessToken) {
+      return NextResponse.json({ error: 'Drive not authorized' }, { status: 401 })
     }
 
-    // Get the full content as array buffer
-    const buffer = await headResp.arrayBuffer()
-    const contentType = headResp.headers.get('content-type') || 'video/mp4'
+    const apiUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`
+    const resp = await fetch(apiUrl, {
+      headers: { 'Authorization': `Bearer ${accessToken}` },
+    })
 
-    // Handle range requests for proper video seeking
+    if (!resp.ok) {
+      return NextResponse.json({ error: `Drive API returned ${resp.status}` }, { status: 502 })
+    }
+
+    const buffer = await resp.arrayBuffer()
+    const contentType = resp.headers.get('content-type') || 'video/mp4'
+
+    // Handle range requests for video seeking
     const range = req.headers.get('range')
-
     if (range) {
       const parts = range.replace(/bytes=/, '').split('-')
       const start = parseInt(parts[0], 10)
@@ -49,7 +55,6 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    // Full response
     return new NextResponse(buffer, {
       headers: {
         'Content-Type': contentType,

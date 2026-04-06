@@ -60,25 +60,42 @@ Use this feedback to AVOID making the same mistakes. If an editor rejected a cli
   }))
 
   // Step 3: Send script + entire catalog to Gemini for intelligent matching
-  const prompt = `You are a direct-response video ad editor. You have a script and a library of B-roll clips. Your job is to:
+  const prompt = `You are a direct-response video ad editor cutting B-roll for a German ad. You have a script and a library of B-roll clips.
 
-1. Split the script into logical B-roll segments (one per sentence or clause)
-2. For EACH segment, pick the TOP 5 best matching clips from the library by their ID
+YOUR #1 JOB: Split the script into VERY SHORT B-roll segments. Each segment = ONE single visual action or idea.
 
-IMPORTANT MATCHING RULES:
+CRITICAL SPLITTING RULES:
+- Each segment should be 3-8 words MAX — one visual moment per segment
+- Every new ACTION, OBJECT, EMOTION, or SCENE CHANGE = a new segment
+- NEVER combine multiple actions into one segment
+- Think like a video editor: each cut needs its own B-roll clip
+
+EXAMPLE of correct splitting:
+Script: "Das Gerät kam drei Tage nachdem ich es bestellt habe an, ich hab es an die Steckdose angeschlossen, und dann einfach wie immer weitergeraucht und gewartet."
+Split into:
+1. "Das Gerät kam drei Tage nachdem ich es bestellt habe an" → package arriving, delivery
+2. "ich hab es an die Steckdose angeschlossen" → plugging device into wall outlet
+3. "und dann einfach wie immer weitergeraucht" → person smoking
+4. "und gewartet" → person waiting, looking around
+
+WRONG (too long, multiple actions combined):
+1. "Das Gerät kam drei Tage nachdem ich es bestellt habe an, ich hab es an die Steckdose angeschlossen" ← WRONG! Two different visuals!
+
+MORE EXAMPLES:
+- "Meine Freundin hat mich gefragt ob ich aufgehört habe zu rauchen" → one segment (one conversation moment)
+- "weil die Wohnung so frisch gerochen hat" → separate segment (different visual: fresh apartment)
+- "Ich hab erstmal gelacht" → separate segment (reaction shot)
+
+For EACH segment, pick the TOP 5 best matching clips from the library by their ID.
+
+MATCHING RULES:
 - Match based on VISUAL MEANING, not just keywords
-- "Bei Galileo gesehen" = someone watching TV, a TV show, a screen → match clips showing TV/screens/watching
-- "Zigarettengeruch" = cigarette smoke, smoky room, ashtray → match clips showing smoke/smoking
-- "Luftfilter zu Hause" = air purifier device, home appliance → match clips showing purifiers/devices
-- "Nikotinpartikel durch den Filter" = particles, filter, microscopic, scientific → match clips showing filters/particles
-- "negative Ionen" = ions, scientific animation, technology → match clips showing ion/science content
-- "nach einem Gewitter frisch" = rain, fresh air, nature, storm → match clips showing weather/nature/freshness
-- "Wohnung riecht frisch" = clean home, happy, relief → match clips showing clean rooms/happy people
-- "Besuch kam, alles vollgesprüht" = spraying air freshener, panic, cleaning → match clips showing cleaning/spraying
-- "Freundin gefragt ob ich aufgehört hab" = friend visiting, surprised, conversation → match clips showing people talking/visiting
-- "steckst das einmal ein" = plugging in device, product close-up → match clips showing product/plug-in
-- "klick auf den Link" = CTA, product shot, call to action → match product/promo clips
-- NEVER match a clip just because it shares a DR function — the VISUAL CONTENT must match the script line meaning
+- "Bei Galileo gesehen" = someone watching TV, a TV show, a screen
+- "Zigarettengeruch" = cigarette smoke, smoky room, ashtray
+- "Luftfilter zu Hause" = air purifier device, home appliance
+- "steckst das einmal ein" = plugging in device, product close-up
+- "klick auf den Link" = CTA, product shot, call to action
+- NEVER match a clip just because it shares a DR function — the VISUAL CONTENT must match
 
 SCRIPT:
 ${script}
@@ -86,10 +103,10 @@ ${script}
 CLIP LIBRARY (${clipCatalog.length} clips):
 ${JSON.stringify(clipCatalog)}
 
-Return JSON array. For each script segment:
-{"line_number": 1, "text": "exact script text", "dr_function": "HOOK|PROBLEM|MECHANISM|PRODUCT|OUTCOME|SOCIAL_PROOF|CTA|LIFESTYLE", "search_tags": ["relevant", "visual", "tags"], "matched_clip_ids": [id1, id2, id3, id4, id5]}
+Return JSON array. For each segment:
+{"line_number": 1, "text": "exact script text for this segment", "dr_function": "HOOK|PROBLEM|MECHANISM|PRODUCT|OUTCOME|SOCIAL_PROOF|CTA|LIFESTYLE", "search_tags": ["relevant", "visual", "tags"], "matched_clip_ids": [id1, id2, id3, id4, id5]}
 
-Pick clip IDs that VISUALLY match what the script line is talking about. Order by best match first.${learningsContext}`
+REMEMBER: Split aggressively! One visual = one segment. If in doubt, split more.${learningsContext}`
 
   const result = await callGemini(prompt)
 
