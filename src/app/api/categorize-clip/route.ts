@@ -7,8 +7,7 @@ const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemi
 // Simple API key for external callers (Make, scripts, etc.)
 const API_KEY = process.env.CATEGORIZE_API_KEY || 'broll-cat-2024'
 
-// Make webhook URL for Drive upload (set in Vercel env after creating Make scenario)
-const MAKE_WEBHOOK_URL = process.env.MAKE_DRIVE_WEBHOOK_URL || ''
+// Google Drive upload is handled by /api/upload-to-drive (no Make needed)
 
 function getSupabase() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -222,24 +221,18 @@ IMPORTANT:
     return NextResponse.json({ error: `DB insert failed: ${error.message}`, category }, { status: 500 })
   }
 
-  // --- TRIGGER MAKE WEBHOOK: Upload to Google Drive ---
-  if (MAKE_WEBHOOK_URL && inserted) {
+  // --- UPLOAD TO GOOGLE DRIVE (fire and forget) ---
+  if (inserted && (storageUrl || externalUrl) && process.env.GOOGLE_DRIVE_REFRESH_TOKEN) {
     const categorizedFilename = buildCategorizedFilename(category, inserted.id, clipData.filename)
-    // Fire and forget — don't block the response
-    fetch(MAKE_WEBHOOK_URL, {
+    fetch(`${req.nextUrl.origin}/api/upload-to-drive`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         clip_id: inserted.id,
-        filename: categorizedFilename,
-        original_filename: clipData.filename,
         file_url: storageUrl || externalUrl,
-        brand: clipData.brand,
-        dr_function: category.dr_function,
-        description: category.description,
-        tags: category.tags,
+        filename: categorizedFilename,
       })
-    }).catch(e => console.error('Make webhook failed:', e))
+    }).catch(e => console.error('Drive upload failed:', e))
   }
 
   return NextResponse.json({ success: true, clip: inserted, category, storage_url: storageUrl })
