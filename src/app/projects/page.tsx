@@ -54,6 +54,9 @@ export default function ProjectsPage() {
   const [generatedVideos, setGeneratedVideos] = useState<Record<number, string>>({})
   const [productImageB64, setProductImageB64] = useState<string | null>(null)
   const [history, setHistory] = useState<Array<{id: number; name: string; script: string; status: string; created_at: string; brand_name?: string; product_name?: string}>>([])
+  // Map line_number → project_result DB row id (for persisting selections/generations)
+  const [resultIds, setResultIds] = useState<Record<number, number>>({})
+
   // Rejection feedback state
   const [rejectModal, setRejectModal] = useState<{ lineNumber: number; clipId?: number; scriptLine: string; drFunction: string } | null>(null)
   const [rejectReason, setRejectReason] = useState('')
@@ -123,6 +126,16 @@ export default function ProjectsPage() {
 
   const [currentProjectId, setCurrentProjectId] = useState<number | null>(null)
 
+  function updateResult(lineNumber: number, update: Record<string, unknown>) {
+    const resultId = resultIds[lineNumber]
+    if (!resultId) return
+    fetch('/api/project-results', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: resultId, ...update })
+    }).catch(e => console.error('Failed to update result:', e))
+  }
+
   async function analyzeScript() {
     if (!script.trim()) return
     setLoading(true)
@@ -154,11 +167,17 @@ export default function ProjectsPage() {
 
       // Save results to DB for later reopening
       if (projectId) {
-        fetch('/api/project-results', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ project_id: projectId, lines: data.lines })
-        }).catch(e => console.error('Failed to save results:', e))
+        try {
+          const saveResp = await fetch('/api/project-results', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ project_id: projectId, lines: data.lines })
+          })
+          const saveData = await saveResp.json()
+          if (saveData.result_ids) {
+            setResultIds(saveData.result_ids)
+          }
+        } catch (e) { console.error('Failed to save results:', e) }
       }
     }
     setLoading(false)
@@ -196,7 +215,12 @@ export default function ProjectsPage() {
         if (clips) clipMap = new Map(clips.map(c => [c.id, c]))
       }
 
-      const loadedLines: ScriptLine[] = results.map((r: { line_number: number; script_text: string; dr_function: string; search_tags: string[]; matched_clip_ids: number[]; selected_clip_id: number | null; generated_image_url: string | null; generated_video_url: string | null }) => {
+      // Build resultIds map for live updates
+      const rIds: Record<number, number> = {}
+      results.forEach((r: { id: number; line_number: number }) => { rIds[r.line_number] = r.id })
+      setResultIds(rIds)
+
+      const loadedLines: ScriptLine[] = results.map((r: { id: number; line_number: number; script_text: string; dr_function: string; search_tags: string[]; matched_clip_ids: number[]; selected_clip_id: number | null; generated_image_url: string | null; generated_video_url: string | null }) => {
         const matches = (r.matched_clip_ids || [])
           .map((id: number, idx: number) => {
             const clip = clipMap.get(id)
@@ -331,8 +355,10 @@ export default function ProjectsPage() {
       })
       const data = await resp.json()
       if (data.success) {
-        setGeneratedImages(prev => ({ ...prev, [lineNum]: `data:${data.image.mimeType};base64,${data.image.data}` }))
+        const imgDataUrl = `data:${data.image.mimeType};base64,${data.image.data}`
+        setGeneratedImages(prev => ({ ...prev, [lineNum]: imgDataUrl }))
         setGeneratedStatus(prev => ({ ...prev, [lineNum]: 'review' }))
+        updateResult(lineNum, { generated_image_url: imgDataUrl, status: 'review' })
       }
     } catch (e) { console.error('Regeneration failed:', e) }
     setGenerating(prev => ({ ...prev, [lineNum]: false }))
@@ -678,6 +704,8 @@ export default function ProjectsPage() {
                                       if (data.success) {
                                         setGeneratedVideos(prev => ({ ...prev, [line.line_number]: data.video_url }))
                                         setGeneratedStatus(prev => ({ ...prev, [line.line_number]: 'video_done' }))
+                                        // Persist video URL to project results
+                                        updateResult(line.line_number, { generated_video_url: data.video_url, status: 'video_done' })
                                         // Auto-save to clip library with categorization + Drive upload (awaited!)
                                         try {
                                           await fetch('/api/categorize-clip', {
@@ -715,8 +743,10 @@ export default function ProjectsPage() {
                                   })
                                   const data = await resp.json()
                                   if (data.success) {
-                                    setGeneratedImages(prev => ({ ...prev, [line.line_number]: `data:${data.image.mimeType};base64,${data.image.data}` }))
+                                    const imgUrl = `data:${data.image.mimeType};base64,${data.image.data}`
+                                    setGeneratedImages(prev => ({ ...prev, [line.line_number]: imgUrl }))
                                     setGeneratedStatus(prev => ({ ...prev, [line.line_number]: 'review' }))
+                                    updateResult(line.line_number, { generated_image_url: imgUrl, status: 'review' })
                                   }
                                 } catch (e) { console.error(e) }
                                 setGenerating(prev => ({ ...prev, [line.line_number]: false }))
@@ -746,7 +776,10 @@ export default function ProjectsPage() {
                               })
                               const data = await resp.json()
                               if (data.success) {
-                                setGeneratedImages(prev => ({ ...prev, [line.line_number]: `data:${data.image.mimeType};base64,${data.image.data}` }))
+                                const imgUrl = `data:${data.image.mimeType};base64,${data.image.data}`
+                                setGeneratedImages(prev => ({ ...prev, [line.line_number]: imgUrl }))
+                                setGeneratedStatus(prev => ({ ...prev, [line.line_number]: 'review' }))
+                                updateResult(line.line_number, { generated_image_url: imgUrl, status: 'review' })
                               }
                             } catch (e) { console.error(e) }
                             setGenerating(prev => ({ ...prev, [line.line_number]: false }))

@@ -27,13 +27,19 @@ export async function POST(req: NextRequest) {
     status: 'pending',
   }))
 
-  const { error } = await getSupabase().from('project_results').insert(rows)
+  const { data: inserted, error } = await getSupabase().from('project_results').insert(rows).select('id, line_number')
 
   if (error) {
     return NextResponse.json({ error: `Save failed: ${error.message}` }, { status: 500 })
   }
 
-  return NextResponse.json({ success: true, saved: rows.length })
+  // Return a map of line_number → result row id for live updates
+  const resultIds: Record<number, number> = {}
+  for (const row of inserted || []) {
+    resultIds[row.line_number] = row.id
+  }
+
+  return NextResponse.json({ success: true, saved: rows.length, result_ids: resultIds })
 }
 
 // Load results for a project
