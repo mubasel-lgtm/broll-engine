@@ -60,7 +60,7 @@ export default function BrandsPage() {
           </Link>
           <div className="flex items-center gap-1">
             <Link href="/clips" className="px-4 py-2 text-[13px] text-gray-500 hover:text-gray-900 rounded-lg hover:bg-gray-50 transition-all duration-200">
-              Clips
+              Upload
             </Link>
             <Link href="/brands" className="nav-active px-4 py-2 text-[13px] text-indigo-600 rounded-lg bg-indigo-50 transition-all duration-200">
               Brands

@@ -11,7 +11,7 @@ export default function Home() {
           </Link>
           <div className="flex items-center gap-1">
             <Link href="/clips" className="px-4 py-2 text-[13px] text-gray-500 hover:text-gray-900 rounded-lg hover:bg-gray-50 transition-all duration-200">
-              Clips
+              Upload
             </Link>
             <Link href="/brands" className="px-4 py-2 text-[13px] text-gray-500 hover:text-gray-900 rounded-lg hover:bg-gray-50 transition-all duration-200">
               Brands
@@ -54,10 +54,10 @@ export default function Home() {
                   <line x1="17" y1="17" x2="22" y2="17" />
                 </svg>
               </div>
-              <h2 className="text-[17px] font-semibold text-gray-900 mb-2 tracking-tight">Clip Library</h2>
-              <p className="text-[14px] text-gray-500 leading-relaxed">Browse, search, and filter 232 categorized B-roll clips across all your brands.</p>
+              <h2 className="text-[17px] font-semibold text-gray-900 mb-2 tracking-tight">Upload B-Roll</h2>
+              <p className="text-[14px] text-gray-500 leading-relaxed">Upload new B-roll clips per brand and product. Auto-categorized by AI.</p>
               <div className="mt-6 flex items-center gap-2 text-[13px] text-indigo-600 font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                <span>Browse clips</span>
+                <span>Upload clips</span>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />
                 </svg>
