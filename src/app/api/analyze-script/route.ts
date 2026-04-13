@@ -20,6 +20,7 @@ async function callLLM(prompt: string): Promise<string> {
       model: 'kimi-k2.5',
       messages: [{ role: 'user', content: prompt }],
       temperature: 1,
+      max_tokens: 16384,
       response_format: { type: 'json_object' },
     })
   })
