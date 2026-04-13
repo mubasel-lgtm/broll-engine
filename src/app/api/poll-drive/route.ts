@@ -14,9 +14,9 @@ const PRODUCT_FOLDERS = [
   { product_id: 4, brand: 'PetBloom', name: 'Digestion', folder_id: '18or234A5qryiaFFZ7JQnVtl0fASqDNpi' },
 ]
 
-// Only fetch files created in the last 30 minutes
+// Fetch files created in the last 25 hours (daily cron with buffer)
 async function listRecentVideos(folderId: string, accessToken: string) {
-  const since = new Date(Date.now() - 30 * 60 * 1000).toISOString()
+  const since = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString()
   const q = encodeURIComponent(`'${folderId}' in parents and trashed=false and mimeType contains 'video/' and createdTime > '${since}'`)
   const url = `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType,size)&pageSize=50&supportsAllDrives=true&includeItemsFromAllDrives=true&orderBy=createdTime desc`
 

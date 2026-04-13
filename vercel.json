@@ -4,7 +4,7 @@
   "crons": [
     {
       "path": "/api/poll-drive",
-      "schedule": "*/15 * * * *"
+      "schedule": "0 6 * * *"
     }
   ]
 }
