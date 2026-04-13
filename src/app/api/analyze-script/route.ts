@@ -6,20 +6,25 @@ function getSupabase() { return createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )}
 
-const GEMINI_KEY = process.env.GEMINI_KEY!
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`
+const MOONSHOT_KEY = process.env.MOONSHOT_KEY!
+const MOONSHOT_URL = 'https://api.moonshot.ai/v1/chat/completions'
 
-async function callGemini(prompt: string): Promise<string> {
-  const resp = await fetch(GEMINI_URL, {
+async function callLLM(prompt: string): Promise<string> {
+  const resp = await fetch(MOONSHOT_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${MOONSHOT_KEY}`,
+    },
     body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.1, responseMimeType: 'application/json' }
+      model: 'kimi-k2.5',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.1,
+      response_format: { type: 'json_object' },
     })
   })
   const data = await resp.json()
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+  return data.choices?.[0]?.message?.content || ''
 }
 
 export async function POST(req: NextRequest) {
@@ -65,7 +70,7 @@ Use this feedback to AVOID making the same mistakes. If an editor rejected a cli
     return NextResponse.json({ error: 'No clips in library' }, { status: 500 })
   }
 
-  // Step 2: Build clip catalog for Gemini — more detail = better matching
+  // Step 2: Build clip catalog for LLM — more detail = better matching
   const clipCatalog = allClips.map(c => ({
     id: c.id,
     desc: c.description?.substring(0, 200),
@@ -78,7 +83,7 @@ Use this feedback to AVOID making the same mistakes. If an editor rejected a cli
     reuse: c.reusability,
   }))
 
-  // Step 3: Send script + entire catalog to Gemini for intelligent matching
+  // Step 3: Send script + entire catalog to Kimi K2.5 for intelligent matching
   const prompt = `You are a direct-response video ad editor cutting B-roll for a German ad. You have a script and a library of B-roll clips.
 
 YOUR JOB: Split the script into B-roll segments. Each segment = ONE distinct visual scene that a video editor would cut to.
@@ -152,7 +157,7 @@ IMPORTANT: "text_en" must be a natural English translation of the German script 
 
 Split by visual scene changes. One scene = one segment. Not too fine, not too coarse.${learningsContext}`
 
-  const result = await callGemini(prompt)
+  const result = await callLLM(prompt)
 
   let lines: Array<{
     line_number: number
