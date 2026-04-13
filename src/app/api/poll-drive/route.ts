@@ -35,14 +35,9 @@ async function listNewVideos(folderId: string, accessToken: string) {
   return allFiles
 }
 
-export async function POST(req: NextRequest) {
-  // Auth: API key or internal
-  const authHeader = req.headers.get('x-api-key')
-  const referer = req.headers.get('referer') || ''
-  const isInternal = referer.includes(req.nextUrl.host)
-  if (!isInternal && authHeader !== API_KEY) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+export const maxDuration = 300
+
+async function handlePollDrive(req: NextRequest) {
 
   const accessToken = await getGoogleAccessToken()
   if (!accessToken) {
@@ -109,4 +104,14 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ results, polled_at: new Date().toISOString() })
+}
+
+// Vercel Cron calls GET
+export async function GET(req: NextRequest) {
+  return handlePollDrive(req)
+}
+
+// Manual/Make calls POST
+export async function POST(req: NextRequest) {
+  return handlePollDrive(req)
 }
