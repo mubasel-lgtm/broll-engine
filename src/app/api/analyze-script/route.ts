@@ -17,10 +17,10 @@ async function callLLM(prompt: string): Promise<string> {
       'Authorization': `Bearer ${MOONSHOT_KEY}`,
     },
     body: JSON.stringify({
-      model: 'kimi-k2.5',
+      model: 'moonshot-v1-128k',
       messages: [{ role: 'user', content: prompt }],
-      temperature: 1,
-      max_tokens: 16384,
+      temperature: 0.1,
+      max_tokens: 8192,
       response_format: { type: 'json_object' },
     })
   })
