@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     clipQuery = clipQuery.eq('brand', brandName)
   }
 
-  const { data: allClips } = await clipQuery
+  const { data: allClips } = await clipQuery.limit(5000)
 
   // Step 1b: Load learnings for this product/brand to improve matching
   let learningsContext = ''
