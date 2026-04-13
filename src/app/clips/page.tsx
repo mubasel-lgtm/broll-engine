@@ -34,13 +34,14 @@ export default function UploadPage() {
     setBrands(b || [])
     setProducts(p || [])
 
-    // Get clip counts per brand
-    const { data: clips } = await supabase.from('clips').select('brand')
-    if (clips) {
-      const counts: Record<string, number> = {}
-      clips.forEach(c => { counts[c.brand] = (counts[c.brand] || 0) + 1 })
-      setClipCounts(counts)
+    // Get clip counts per brand (use count query to avoid row limits)
+    const brandNames = (b || []).map(br => br.name)
+    const counts: Record<string, number> = {}
+    for (const name of brandNames) {
+      const { count } = await supabase.from('clips').select('id', { count: 'exact', head: true }).eq('brand', name)
+      counts[name] = count || 0
     }
+    setClipCounts(counts)
     setLoading(false)
   }
 
