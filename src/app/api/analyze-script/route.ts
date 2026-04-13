@@ -151,8 +151,10 @@ ${script}
 CLIP LIBRARY (${clipCatalog.length} clips — all are videos, no images):
 ${JSON.stringify(clipCatalog)}
 
-Return JSON array. For each segment:
-{"line_number": 1, "text": "exact script text for this segment", "text_en": "English translation of this segment", "dr_function": "HOOK|PROBLEM|MECHANISM|PRODUCT|OUTCOME|SOCIAL_PROOF|CTA|LIFESTYLE", "search_tags": ["relevant", "visual", "tags"], "matched_clip_ids": [id1, id2, id3, id4, id5]}
+Return a JSON object with a "lines" key containing an array. Each element:
+{"line_number": 1, "text": "exact script text", "text_en": "English translation", "dr_function": "HOOK|PROBLEM|MECHANISM|PRODUCT|OUTCOME|SOCIAL_PROOF|CTA|LIFESTYLE", "search_tags": ["tag1", "tag2"], "matched_clip_ids": [id1, id2, id3, id4, id5]}
+
+Example response format: {"lines": [{"line_number": 1, "text": "...", "text_en": "...", "dr_function": "HOOK", "search_tags": ["tag"], "matched_clip_ids": [1,2,3,4,5]}]}
 
 IMPORTANT: "text_en" must be a natural English translation of the German script text. This helps the Filipino video editors understand what the line means.
 
@@ -170,7 +172,9 @@ Split by visual scene changes. One scene = one segment. Not too fine, not too co
   }> = []
 
   try {
-    lines = JSON.parse(result)
+    const parsed = JSON.parse(result)
+    // Handle both {"lines": [...]} and bare [...]
+    lines = Array.isArray(parsed) ? parsed : (parsed.lines || parsed.segments || parsed.data || [])
   } catch {
     const start = result.indexOf('[')
     const end = result.lastIndexOf(']') + 1
