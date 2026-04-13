@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized. Provide x-api-key header.' }, { status: 401 })
   }
 
-  const { image_base64, drive_url, video_url, filename, brand, filetype } = await req.json()
+  const { image_base64, drive_url, video_url, filename, brand, product_id, filetype } = await req.json()
 
   // Accept video_url (from create-video/Kling) or drive_url
   const externalUrl = drive_url || video_url || ''
@@ -253,6 +253,7 @@ IMPORTANT:
     reusability: category.reusability,
     reusability_reason: category.reusability_reason,
     brand: brand || 'Uncategorized',
+    product_id: product_id || null,
     drive_url: externalUrl,
     thumbnail_url: storageUrl || '',
   }

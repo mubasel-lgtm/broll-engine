@@ -32,13 +32,15 @@ export async function POST(req: NextRequest) {
     if (brand) brandName = brand.name
   }
 
-  // Step 1: Get only VIDEO clips from DB — filter by brand when available
+  // Step 1: Get only VIDEO clips from DB — filter by product (preferred) or brand
   let clipQuery = getSupabase()
     .from('clips')
     .select('id, filename, description, dr_function, tags, mood, setting, has_product, has_person, person_gender, thumbnail_url, drive_url, reusability, camera_movement, filetype')
     .eq('filetype', 'video')
 
-  if (brandName) {
+  if (product_id) {
+    clipQuery = clipQuery.eq('product_id', product_id)
+  } else if (brandName) {
     clipQuery = clipQuery.eq('brand', brandName)
   }
 

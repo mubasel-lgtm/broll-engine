@@ -815,6 +815,7 @@ export default function ProjectsPage() {
                                               video_url: data.video_url,
                                               filename: `ai_broll_${lineIdx + 1}_${Date.now()}.mp4`,
                                               brand: selectedBrandObj?.name || 'Uncategorized',
+                                              product_id: selectedProduct || null,
                                               filetype: 'video',
                                             })
                                           })

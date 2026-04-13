@@ -24,6 +24,7 @@ export type Clip = {
   reusability: string
   reusability_reason: string
   brand: string
+  product_id: number | null
   drive_url: string
   thumbnail_url: string
   created_at: string
