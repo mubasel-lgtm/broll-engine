@@ -19,7 +19,7 @@ async function callLLM(prompt: string): Promise<string> {
     body: JSON.stringify({
       model: 'kimi-k2.5',
       messages: [{ role: 'user', content: prompt }],
-      temperature: 0.1,
+      temperature: 1,
       response_format: { type: 'json_object' },
     })
   })
