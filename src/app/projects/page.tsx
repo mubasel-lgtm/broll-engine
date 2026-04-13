@@ -477,7 +477,7 @@ export default function ProjectsPage() {
                   <input
                     value={projectName}
                     onChange={e => setProjectName(e.target.value)}
-                    placeholder="e.g. ODRX German Testimonial v3"
+                    placeholder="e.g. PetBloom Teeth German Ad v1"
                     className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all"
                   />
                 </div>

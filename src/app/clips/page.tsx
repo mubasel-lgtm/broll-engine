@@ -5,9 +5,17 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 
 type Brand = { id: number; name: string }
-type Product = { id: number; brand_id: number; name: string; image_url: string | null; physical_notes: string }
+type Product = { id: number; brand_id: number; name: string; image_url: string | null; physical_notes: string; drive_folder_id: string | null }
 
-const DRIVE_BROLL_FOLDER = 'https://drive.google.com/drive/folders/19B5_90zVZJIirJGPpklArzp2C-JzSugC'
+// Default B-Roll folder (NorvaHaus shared drive)
+const DEFAULT_DRIVE_FOLDER = 'https://drive.google.com/drive/folders/19B5_90zVZJIirJGPpklArzp2C-JzSugC'
+
+function getDriveFolderUrl(product: Product): string {
+  if (product.drive_folder_id) {
+    return `https://drive.google.com/drive/folders/${product.drive_folder_id}`
+  }
+  return DEFAULT_DRIVE_FOLDER
+}
 
 export default function UploadPage() {
   const [brands, setBrands] = useState<Brand[]>([])
@@ -90,15 +98,6 @@ export default function UploadPage() {
                       <h2 className="text-[17px] font-semibold tracking-tight">{brand.name}</h2>
                       <span className="text-xs bg-gray-50 text-gray-400 px-2.5 py-1 rounded-lg border border-gray-200">{count} clips</span>
                     </div>
-                    <a
-                      href={DRIVE_BROLL_FOLDER}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-2 px-4 py-2 text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                      Open Drive Folder
-                    </a>
                   </div>
 
                   {/* Products */}
@@ -124,7 +123,7 @@ export default function UploadPage() {
                             </div>
 
                             <a
-                              href={DRIVE_BROLL_FOLDER}
+                              href={getDriveFolderUrl(product)}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 transition-colors"

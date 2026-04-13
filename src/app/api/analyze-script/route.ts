@@ -25,11 +25,24 @@ async function callGemini(prompt: string): Promise<string> {
 export async function POST(req: NextRequest) {
   const { script, product_id, brand_id } = await req.json()
 
-  // Step 1: Get only VIDEO clips from DB (no images/icons)
-  const { data: allClips } = await getSupabase()
+  // Step 0: Resolve brand name for filtering
+  let brandName = ''
+  if (brand_id) {
+    const { data: brand } = await getSupabase().from('brands').select('name').eq('id', brand_id).single()
+    if (brand) brandName = brand.name
+  }
+
+  // Step 1: Get only VIDEO clips from DB — filter by brand when available
+  let clipQuery = getSupabase()
     .from('clips')
     .select('id, filename, description, dr_function, tags, mood, setting, has_product, has_person, person_gender, thumbnail_url, drive_url, reusability, camera_movement, filetype')
     .eq('filetype', 'video')
+
+  if (brandName) {
+    clipQuery = clipQuery.eq('brand', brandName)
+  }
+
+  const { data: allClips } = await clipQuery
 
   // Step 1b: Load learnings for this product/brand to improve matching
   let learningsContext = ''
