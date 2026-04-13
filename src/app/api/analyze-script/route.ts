@@ -122,6 +122,8 @@ For EACH segment, pick the TOP 5 best matching clips from the library by their I
 
 MATCHING RULES:
 - Match based on VISUAL MEANING, not just keywords
+- CRITICAL: Read the lines BEFORE and AFTER each segment to understand the FULL CONTEXT. A line about "food" in a script about a dog supplement means "product being sprinkled over food", NOT just "a bowl of dog food". The surrounding lines reveal what the scene is REALLY about — the product in action, not the literal noun.
+- Think: what would a VIDEO EDITOR show here, knowing the ENTIRE script? Not just this one line in isolation.
 - "Bei Galileo gesehen" = someone watching TV, a TV show, a screen
 - "Zigarettengeruch" = cigarette smoke, smoky room, ashtray
 - "steckst das einmal ein" = plugging in device, product close-up
