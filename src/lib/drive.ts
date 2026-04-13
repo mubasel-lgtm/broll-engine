@@ -6,7 +6,12 @@ function getSupabase() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
 
+let cachedDriveToken: string | null = null
+let driveTokenExpiry = 0
+
 export async function getGoogleAccessToken(): Promise<string | null> {
+  if (cachedDriveToken && Date.now() < driveTokenExpiry - 60_000) return cachedDriveToken
+
   const refreshToken = process.env.GOOGLE_DRIVE_REFRESH_TOKEN
   const clientId = process.env.GOOGLE_CLIENT_ID
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET
@@ -23,7 +28,11 @@ export async function getGoogleAccessToken(): Promise<string | null> {
     })
   })
   const data = await resp.json()
-  return data.access_token || null
+  if (!data.access_token) return null
+
+  cachedDriveToken = data.access_token
+  driveTokenExpiry = Date.now() + (data.expires_in || 3600) * 1000
+  return cachedDriveToken
 }
 
 export async function uploadFileToDrive(

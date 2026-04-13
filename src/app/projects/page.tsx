@@ -727,27 +727,33 @@ export default function ProjectsPage() {
                             }`}
                           >
                             <div
-                              className="aspect-video bg-gray-100 rounded-t-xl overflow-hidden relative cursor-pointer"
+                              className="aspect-video bg-gray-50 rounded-t-xl overflow-hidden relative cursor-pointer group"
                               onClick={() => setPreviewClip(clip)}
                             >
-                              {clip.drive_url ? (
-                                <video src={`/api/proxy-video?url=${encodeURIComponent(clip.drive_url)}`} preload="metadata" muted className="w-full h-full object-cover" playsInline />
-                              ) : clip.thumbnail_url ? (
+                              {clip.thumbnail_url ? (
                                 <img src={clip.thumbnail_url} alt="" className="w-full h-full object-cover" />
                               ) : (
-                                <div className="w-full h-full flex items-center justify-center text-gray-300 text-xs">No preview</div>
+                                <div className="w-full h-full flex flex-col items-center justify-center text-gray-400 gap-1.5">
+                                  <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" className="text-gray-300 group-hover:text-indigo-400 transition-colors"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                  <span className="text-[11px] font-medium">{clip.filename?.replace(/\.[^.]+$/, '').substring(0, 30)}</span>
+                                </div>
                               )}
-                              <div className="absolute bottom-2 right-2 text-xs bg-white/90 text-gray-700 px-2 py-0.5 rounded-lg shadow-sm backdrop-blur-sm font-medium">Play</div>
+                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+                                <div className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-indigo-600 ml-0.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                </div>
+                              </div>
                               <div className="absolute top-2 right-2 text-xs bg-indigo-600 text-white px-2 py-0.5 rounded-lg shadow-sm font-medium">{clip.match_score}pts</div>
                             </div>
                             <div className="p-3">
                               <p className="text-xs text-gray-600 line-clamp-2 mb-2 leading-relaxed">{clip.description}</p>
                               <a
-                                href={clip.drive_url ? `/api/proxy-video?url=${encodeURIComponent(clip.drive_url)}` : '#'}
-                                download={clip.filename}
+                                href={clip.drive_url || '#'}
+                                target="_blank"
+                                rel="noopener noreferrer"
                                 className="text-xs px-3 py-1.5 rounded-lg transition w-full block text-center border border-gray-200 bg-gray-50 text-gray-600 hover:bg-indigo-600 hover:text-white hover:border-indigo-600 font-medium"
                               >
-                                Download
+                                Open in Drive
                               </a>
                             </div>
                           </div>
@@ -1055,8 +1061,8 @@ export default function ProjectsPage() {
         <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-8"
           onClick={() => setPreviewClip(null)}>
           <div className="bg-white rounded-2xl max-w-3xl w-full shadow-2xl border border-gray-200" onClick={e => e.stopPropagation()}>
-            <div className="aspect-video bg-gray-100 rounded-t-2xl overflow-hidden">
-              {previewClip.drive_url && previewClip.filename?.match(/\.(mp4|mov|webm)$/i) ? (
+            <div className="aspect-video bg-gray-900 rounded-t-2xl overflow-hidden">
+              {previewClip.drive_url ? (
                 <video
                   key={previewClip.id}
                   src={getDriveStreamUrl(previewClip.drive_url)!}
@@ -1064,13 +1070,22 @@ export default function ProjectsPage() {
                   autoPlay
                   className="w-full h-full object-contain"
                   playsInline
+                  onError={(e) => {
+                    // Fallback: if video fails, try as image
+                    const target = e.currentTarget
+                    const parent = target.parentElement
+                    if (parent) {
+                      const img = document.createElement('img')
+                      img.src = getDriveStreamUrl(previewClip.drive_url)!
+                      img.className = 'w-full h-full object-contain'
+                      parent.replaceChild(img, target)
+                    }
+                  }}
                 />
-              ) : previewClip.drive_url && previewClip.filename?.match(/\.(jpg|jpeg|png|webp)$/i) ? (
-                <img src={getDriveStreamUrl(previewClip.drive_url)!} alt="" className="w-full h-full object-contain" />
               ) : previewClip.thumbnail_url ? (
                 <img src={previewClip.thumbnail_url} alt="" className="w-full h-full object-contain" />
               ) : (
-                <div className="w-full h-full flex items-center justify-center text-gray-300">No preview</div>
+                <div className="w-full h-full flex items-center justify-center text-gray-500">No preview available</div>
               )}
             </div>
             <div className="p-6">
