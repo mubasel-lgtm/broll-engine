@@ -19,9 +19,9 @@ async function callKimi(prompt: string, maxTokens = 8192): Promise<{ content: st
       'Authorization': `Bearer ${MOONSHOT_KEY}`,
     },
     body: JSON.stringify({
-      model: 'kimi-k2.5',
+      model: 'kimi-k2-turbo-preview',
       messages: [{ role: 'user', content: prompt }],
-      temperature: 1,
+      temperature: 0.6,
       max_tokens: maxTokens,
       response_format: { type: 'json_object' },
     })
