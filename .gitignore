@@ -42,3 +42,4 @@ next-env.d.ts
 token.json
 credentials.json
 .env.local
+.env*.local

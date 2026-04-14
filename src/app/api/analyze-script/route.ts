@@ -33,11 +33,21 @@ async function callLLM(prompt: string): Promise<string> {
 export async function POST(req: NextRequest) {
   const { script, product_id, brand_id } = await req.json()
 
-  // Step 0: Resolve brand name for filtering
+  // Step 0: Resolve brand name for filtering + load product's custom matching prompt
   let brandName = ''
   if (brand_id) {
     const { data: brand } = await getSupabase().from('brands').select('name').eq('id', brand_id).single()
     if (brand) brandName = brand.name
+  }
+
+  let productPrompt = ''
+  let productName = ''
+  if (product_id) {
+    const { data: product } = await getSupabase().from('products').select('name, matching_prompt').eq('id', product_id).single()
+    if (product) {
+      productName = product.name || ''
+      productPrompt = product.matching_prompt || ''
+    }
   }
 
   // Step 1: Get only VIDEO clips from DB — filter by product (preferred) or brand
@@ -87,7 +97,9 @@ Use this feedback to AVOID making the same mistakes. If an editor rejected a cli
   }))
 
   // Step 3: Send script + entire catalog to Kimi K2.5 for intelligent matching
-  const prompt = `You are a direct-response video ad editor cutting B-roll for a German ad. You have a script and a library of B-roll clips.
+  const productHeader = productName ? `\n\nPRODUCT: ${productName}\n(All script lines are for this product. When a line mentions a noun, interpret it in the product's context, not literally.)` : ''
+
+  const prompt = `You are a direct-response video ad editor cutting B-roll for a German ad. You have a script and a library of B-roll clips.${productHeader}
 
 YOUR JOB: Split the script into B-roll segments. Each segment = ONE distinct visual scene that a video editor would cut to.
 
@@ -100,7 +112,7 @@ SPLITTING RULES:
 
 THE KEY QUESTION for each split decision: "Would a video editor cut to a DIFFERENT clip here?" If yes → split.
 
-EXAMPLE 1 — splitting within a sentence:
+${productPrompt || `EXAMPLE 1 — splitting within a sentence:
 Script: "Der Grund dafür ist dass das Gerät nicht mit Filtern arbeitet, sondern mit Negativ-Ionen — bevor du fragst was das ist, das sind dieselben Ionen die nach einem Gewitter in der Luft entstehen, genau deshalb riecht es danach draußen so frisch."
 Split:
 1. "Der Grund dafür ist dass das Gerät nicht mit Filtern arbeitet, sondern mit Negativ-Ionen" → device/technology visual, how the product works
@@ -126,16 +138,18 @@ WRONG — too granular:
 WRONG — too long (different visuals crammed together):
 - "Gerät arbeitet mit Negativ-Ionen, das sind die Ionen nach einem Gewitter" ← WRONG: technology + nature = two different visuals, must split!
 
+MATCHING HINTS for this product:
+- "Bei Galileo gesehen" = someone watching TV, a TV show, a screen
+- "Zigarettengeruch" = cigarette smoke, smoky room, ashtray
+- "steckst das einmal ein" = plugging in device, product close-up
+- "klick auf den Link" = CTA, product shot`}
+
 For EACH segment, pick the TOP 5 best matching clips from the library by their ID.
 
 MATCHING RULES:
 - Match based on VISUAL MEANING, not just keywords
-- CRITICAL: Read the lines BEFORE and AFTER each segment to understand the FULL CONTEXT. A line about "food" in a script about a dog supplement means "product being sprinkled over food", NOT just "a bowl of dog food". The surrounding lines reveal what the scene is REALLY about — the product in action, not the literal noun.
+- CRITICAL: Read the lines BEFORE and AFTER each segment to understand the FULL CONTEXT. The surrounding lines reveal what the scene is REALLY about — the product in action, not the literal noun.
 - Think: what would a VIDEO EDITOR show here, knowing the ENTIRE script? Not just this one line in isolation.
-- "Bei Galileo gesehen" = someone watching TV, a TV show, a screen
-- "Zigarettengeruch" = cigarette smoke, smoky room, ashtray
-- "steckst das einmal ein" = plugging in device, product close-up
-- "klick auf den Link" = CTA, product shot
 - NEVER match a clip just because it shares a DR function — the VISUAL CONTENT must match
 
 UGC STYLE RULES — THIS IS CRITICAL:
