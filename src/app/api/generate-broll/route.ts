@@ -5,7 +5,7 @@ const NANO_URL = `https://generativelanguage.googleapis.com/v1beta/models/nano-b
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`
 
 export async function POST(req: NextRequest) {
-  const { script_line, dr_function, aroll_image, speaker_description, product_image, product_physical, rejection_feedback, previous_prompt, chat_history, visual_concept } = await req.json()
+  const { script_line, dr_function, aroll_image, speaker_description, product_image, product_physical, rejection_feedback, previous_prompt, chat_history, visual_concept, full_script, product_name } = await req.json()
   // chat_history: Array of { prompt: string, rejection: string } from previous attempts
 
   if (!script_line) {
@@ -75,9 +75,11 @@ export async function POST(req: NextRequest) {
   }
 
   // Step 1: Generate prompt with Gemini (chat-style for iterations)
+  const contextBlock = `${product_name ? `PRODUCT: ${product_name}\nThe entire ad is about this product. The SUBJECT of every scene is bound to this product's world — if the product is for dogs, the scene is about a dog; if for teeth, about teeth. Never generate a generic human scene when the subject of the ad is an animal or something specific.\n\n` : ''}${full_script ? `FULL AD SCRIPT (for context — understand what pronouns and verbs refer to):\n"""\n${full_script}\n"""\n\n` : ''}`
+
   const systemPrompt = `You are a B-roll image prompt engineer for direct-response ads.
 
-Write a Nano Banana Pro image generation prompt for this script line:
+${contextBlock}Write a Nano Banana Pro image generation prompt for THIS specific script line:
 "${script_line}"
 DR Function: ${dr_function}
 
@@ -90,6 +92,7 @@ ${refPrefix ? `- Start with: "${refPrefix}"` : ''}
 - iPhone-quality casual photography, bright natural daylight, UGC amateur style
 - NOT professionally lit, NOT cinematic, NOT dark or moody
 - All people: white, German, appropriate age
+- CRITICAL: Anchor the SUBJECT in the full-script context. If the ad is about a dog and this line says "sie konnte nicht mehr laufen", the subject is the DOG, not a human woman. Resolve pronouns and verbs using the full script.
 - CRITICAL: This line is ONE single moment. Show ONLY what THIS line describes.
 - VERY IMPORTANT: This image will be animated into a 3-second video. Design it as the STARTING FRAME of an action, NOT as a finished photograph.
   - If people are talking → show them FACING each other, mid-conversation, mouths slightly open, engaged

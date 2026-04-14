@@ -13,7 +13,7 @@ function getSupabase() {
 }
 
 export async function POST(req: NextRequest) {
-  const { image_base64, script_line, dr_function } = await req.json()
+  const { image_base64, script_line, dr_function, full_script, product_name } = await req.json()
 
   if (!image_base64) {
     return NextResponse.json({ error: 'Missing image' }, { status: 400 })
@@ -41,7 +41,8 @@ export async function POST(req: NextRequest) {
     body: JSON.stringify({
       contents: [{ parts: [{ text: `You are a video motion director. Write a motion prompt to bring this B-roll image to life as a 3-second video clip.
 
-Script context: "${script_line}"
+${product_name ? `PRODUCT: ${product_name} — the subject of the scene must fit this product's world (dog product = dog motion, teeth product = mouth/smile motion, etc.).\n` : ''}${full_script ? `FULL AD SCRIPT (context):\n"""\n${full_script}\n"""\n` : ''}
+Script line being animated: "${script_line}"
 DR function: ${dr_function}
 
 CRITICAL RULES:

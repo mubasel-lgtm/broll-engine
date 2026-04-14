@@ -186,6 +186,8 @@ export default function ProjectsPage() {
           product_image: productImageB64,
           product_physical: selectedProd?.physical_notes,
           visual_concept: concept,
+          full_script: script,
+          product_name: selectedProd?.name,
         })
       })
       const data = await resp.json()
@@ -462,6 +464,8 @@ export default function ProjectsPage() {
           rejection_feedback: rejectionText,
           previous_prompt: prevPrompt,
           chat_history: history,
+          full_script: script,
+          product_name: selectedProd?.name,
         })
       })
       const data = await resp.json()
@@ -825,7 +829,7 @@ export default function ProjectsPage() {
                                       const resp = await fetch('/api/create-video', {
                                         method: 'POST',
                                         headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({ image_base64: imgData, script_line: line.text, dr_function: line.dr_function })
+                                        body: JSON.stringify({ image_base64: imgData, script_line: line.text, dr_function: line.dr_function, full_script: script, product_name: products.find(p => p.id === selectedProduct)?.name })
                                       })
                                       const data = await resp.json()
                                       if (data.success) {
@@ -870,7 +874,7 @@ export default function ProjectsPage() {
                                   const resp = await fetch('/api/suggest-concepts', {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ script_line: line.text, dr_function: line.dr_function })
+                                    body: JSON.stringify({ script_line: line.text, dr_function: line.dr_function, full_script: script, product_name: products.find(p => p.id === selectedProduct)?.name })
                                   })
                                   const data = await resp.json()
                                   setConcepts(data.concepts || [])
@@ -900,7 +904,7 @@ export default function ProjectsPage() {
                               const resp = await fetch('/api/suggest-concepts', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ script_line: line.text, dr_function: line.dr_function })
+                                body: JSON.stringify({ script_line: line.text, dr_function: line.dr_function, full_script: script, product_name: products.find(p => p.id === selectedProduct)?.name })
                               })
                               const data = await resp.json()
                               setConcepts(data.concepts || [])
