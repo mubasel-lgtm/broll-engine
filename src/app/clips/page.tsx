@@ -62,6 +62,9 @@ export default function UploadPage() {
             <Link href="/projects" className="px-4 py-2 text-[13px] text-gray-500 hover:text-gray-900 rounded-lg hover:bg-gray-50 transition-all duration-200">
               Projects
             </Link>
+            <Link href="/overlays" className="px-4 py-2 text-[13px] text-gray-500 hover:text-gray-900 rounded-lg hover:bg-gray-50 transition-all duration-200">
+              Overlays
+            </Link>
           </div>
         </div>
       </nav>

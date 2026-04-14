@@ -458,6 +458,7 @@ export default function ProjectsPage() {
             <Link href="/clips" className="px-4 py-2 text-[13px] text-gray-500 hover:text-gray-900 rounded-lg hover:bg-gray-50 transition-all duration-200">Upload</Link>
             <Link href="/brands" className="px-4 py-2 text-[13px] text-gray-500 hover:text-gray-900 rounded-lg hover:bg-gray-50 transition-all duration-200">Brands</Link>
             <Link href="/projects" className="nav-active px-4 py-2 text-[13px] text-indigo-600 rounded-lg bg-indigo-50 transition-all duration-200">Projects</Link>
+            <Link href="/overlays" className="px-4 py-2 text-[13px] text-gray-500 hover:text-gray-900 rounded-lg hover:bg-gray-50 transition-all duration-200">Overlays</Link>
           </div>
         </div>
       </nav>
