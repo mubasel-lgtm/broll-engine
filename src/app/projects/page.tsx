@@ -231,53 +231,53 @@ export default function ProjectsPage() {
 
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 290000)
-    let resp: Response
     try {
-      resp = await fetch('/api/analyze-script', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ script, product_id: selectedProduct, brand_id: brand?.id || selectedBrand }),
-        signal: controller.signal,
-      })
-    } catch (err) {
-      clearTimeout(timeoutId)
-      const msg = err instanceof Error && err.name === 'AbortError'
-        ? 'Die Analyse hat zu lange gedauert (>290s). Kimi/Moonshot hat nicht geantwortet. Versuch es erneut oder kürze das Script.'
-        : 'Netzwerkfehler beim Analysieren: ' + (err instanceof Error ? err.message : String(err))
-      alert(msg)
-      return
-    }
-    clearTimeout(timeoutId)
-    const text = await resp.text()
-    let data: { lines?: ScriptLine[]; error?: string } = {}
-    try { data = JSON.parse(text) } catch {
-      alert(`Server-Fehler (${resp.status}): ${text.slice(0, 200)}`)
-      return
-    }
-    if (!resp.ok) {
-      alert('Analyse fehlgeschlagen: ' + (data.error || `Status ${resp.status}`))
-      return
-    }
-    if (data.lines) {
-      setLines(data.lines)
-      setStep('results')
-
-      // Save results to DB for later reopening
-      if (projectId) {
-        try {
-          const saveResp = await fetch('/api/project-results', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ project_id: projectId, lines: data.lines })
-          })
-          const saveData = await saveResp.json()
-          if (saveData.result_ids) {
-            setResultIds(saveData.result_ids)
-          }
-        } catch (e) { console.error('Failed to save results:', e) }
+      let resp: Response
+      try {
+        resp = await fetch('/api/analyze-script', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ script, product_id: selectedProduct, brand_id: brand?.id || selectedBrand }),
+          signal: controller.signal,
+        })
+      } catch (err) {
+        const msg = err instanceof Error && err.name === 'AbortError'
+          ? 'Die Analyse hat zu lange gedauert (>290s). Kimi/Moonshot hat nicht geantwortet. Versuch es erneut oder kürze das Script.'
+          : 'Netzwerkfehler beim Analysieren: ' + (err instanceof Error ? err.message : String(err))
+        alert(msg)
+        return
       }
+      const text = await resp.text()
+      let data: { lines?: ScriptLine[]; error?: string } = {}
+      try { data = JSON.parse(text) } catch {
+        alert(`Server-Fehler (${resp.status}): ${text.slice(0, 200)}`)
+        return
+      }
+      if (!resp.ok) {
+        alert('Analyse fehlgeschlagen: ' + (data.error || `Status ${resp.status}`))
+        return
+      }
+      if (data.lines) {
+        setLines(data.lines)
+        setStep('results')
+        if (projectId) {
+          try {
+            const saveResp = await fetch('/api/project-results', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ project_id: projectId, lines: data.lines })
+            })
+            const saveData = await saveResp.json()
+            if (saveData.result_ids) {
+              setResultIds(saveData.result_ids)
+            }
+          } catch (e) { console.error('Failed to save results:', e) }
+        }
+      }
+    } finally {
+      clearTimeout(timeoutId)
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   async function loadProject(project: HistoryProject) {
