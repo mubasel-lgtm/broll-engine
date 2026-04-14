@@ -66,6 +66,46 @@ type Segment = {
   search_tags: string[]
 }
 
+const STOPWORDS = new Set([
+  'der','die','das','den','dem','des','ein','eine','einer','einem','einen','eines',
+  'und','oder','aber','weil','dass','ist','sind','war','waren','war','hab','habe','hat','haben','hatte','hatten',
+  'ich','du','er','sie','es','wir','ihr','mich','mir','dich','dir','ihn','ihm','ihnen','uns','euch',
+  'mein','dein','sein','ihr','unser','euer','nicht','kein','keine','auch','nur','sehr','schon','noch','mal','so',
+  'the','a','an','and','or','but','is','are','was','were','of','to','in','on','at','for','with','by','from',
+  'i','you','he','she','it','we','they','me','him','her','us','them',
+  'über','unter','vor','nach','bei','mit','zu','aus','für','auf','an','ab','als','am','im','um','von','zum','zur',
+])
+
+function extractTerms(text: string): Set<string> {
+  const terms = new Set<string>()
+  const words = text.toLowerCase().replace(/[^a-zäöüß0-9\s-]/g, ' ').split(/\s+/)
+  for (const w of words) {
+    if (w.length >= 3 && !STOPWORDS.has(w)) terms.add(w)
+  }
+  return terms
+}
+
+function scoreClip(clip: ClipRow, terms: Set<string>, drFunction: string): number {
+  let score = 0
+  const clipText = [
+    clip.description || '',
+    (clip.tags || []).join(' '),
+    clip.mood || '',
+    clip.setting || '',
+    clip.filename || '',
+  ].join(' ').toLowerCase()
+  for (const term of terms) {
+    if (clipText.includes(term)) score += 2
+    // Partial match (substring root) counts half
+    else if (term.length >= 5 && clipText.includes(term.slice(0, -1))) score += 1
+  }
+  // DR-function alignment bonus (soft — still include even if mismatch)
+  if (clip.dr_function && drFunction && clip.dr_function.toUpperCase() === drFunction.toUpperCase()) score += 1
+  // Slight random tiebreaker for diversity when many clips tie
+  score += Math.random() * 0.5
+  return score
+}
+
 function extractSegments(raw: string): Segment[] {
   if (!raw) return []
   const tryParse = (s: string): Segment[] => {
@@ -184,23 +224,8 @@ Return JSON: {"lines": [{"line_number": 1, "text": "...", "text_en": "...", "dr_
   }
 
   // ====== PHASE 2: MATCH CLIPS PER SEGMENT (parallel) ======
-  // Shuffle catalog to combat position bias
-  const shuffled = [...allClips]
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
-  }
-  const catalogForLLM = shuffled.map(c => ({
-    id: c.id,
-    desc: c.description?.substring(0, 200),
-    dr: c.dr_function,
-    tags: (c.tags || []).slice(0, 7).join(', '),
-    mood: c.mood,
-    setting: c.setting,
-    person: c.has_person,
-    product: c.has_product,
-  }))
-  const catalogJson = JSON.stringify(catalogForLLM)
+  // Pre-filter clips per segment via cheap text scoring, send only top-50 to Kimi
+  const PREFILTER_SIZE = 50
 
   const matchPromises = segments.map(async (seg, idx) => {
     const prev = segments[idx - 1]
@@ -209,6 +234,27 @@ Return JSON: {"lines": [{"line_number": 1, "text": "...", "text_en": "...", "dr_
       prev ? `PREVIOUS LINE: "${prev.text}"` : '',
       next ? `NEXT LINE: "${next.text}"` : '',
     ].filter(Boolean).join('\n')
+
+    // Score clips by term overlap with segment text + tags
+    const terms = extractTerms(seg.text + ' ' + seg.search_tags.join(' ') + ' ' + (seg.text_en || ''))
+    const scored = allClips.map(c => ({ clip: c, score: scoreClip(c, terms, seg.dr_function) }))
+    scored.sort((a, b) => b.score - a.score)
+    const shortlist = scored.slice(0, PREFILTER_SIZE).map(s => s.clip)
+    // Shuffle shortlist to reduce position bias in Kimi's picks
+    for (let i = shortlist.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      ;[shortlist[i], shortlist[j]] = [shortlist[j], shortlist[i]]
+    }
+    const catalog = shortlist.map(c => ({
+      id: c.id,
+      desc: c.description?.substring(0, 200),
+      dr: c.dr_function,
+      tags: (c.tags || []).slice(0, 7).join(', '),
+      mood: c.mood,
+      setting: c.setting,
+      person: c.has_person,
+      product: c.has_product,
+    }))
 
     const prompt = `You are a UGC direct-response video ad editor picking B-roll clips for ONE script segment.${productHeader}
 
@@ -229,8 +275,8 @@ UGC STYLE — CRITICAL:
 - NEVER studios, TV shows, news broadcasts, stages, game shows, studio audiences.
 
 ${productPrompt ? 'PRODUCT-SPECIFIC MATCHING HINTS:\n' + productPrompt + '\n' : ''}
-CLIP LIBRARY (${catalogForLLM.length} clips):
-${catalogJson}
+SHORTLISTED CLIPS (${catalog.length} candidates pre-filtered for relevance):
+${JSON.stringify(catalog)}
 
 Return JSON: {"matched_clip_ids": [id1, id2, id3, id4, id5]}${learningsContext}`
 
