@@ -248,14 +248,17 @@ export default function ProjectsPage() {
         return
       }
       const text = await resp.text()
-      let data: { lines?: ScriptLine[]; error?: string; raw?: string } = {}
+      let data: { lines?: ScriptLine[]; error?: string; raw?: string; debug?: string } = {}
       try { data = JSON.parse(text) } catch {
         alert(`Server-Fehler (${resp.status}): ${text.slice(0, 200)}`)
         return
       }
       if (!resp.ok) {
-        const detail = data.raw ? `\n\nRAW OUTPUT:\n${data.raw}` : ''
-        alert(`Analyse fehlgeschlagen: ${data.error || `Status ${resp.status}`}${detail}`)
+        const parts = [`Analyse fehlgeschlagen: ${data.error || `Status ${resp.status}`}`]
+        if (data.debug) parts.push(`\nDEBUG: ${data.debug}`)
+        if (data.raw) parts.push(`\nRAW: ${data.raw}`)
+        console.error('Analyse error:', data)
+        alert(parts.join(''))
         return
       }
       if (data.lines) {

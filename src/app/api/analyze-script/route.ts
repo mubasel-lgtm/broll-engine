@@ -11,7 +11,7 @@ const MOONSHOT_URL = 'https://api.moonshot.ai/v1/chat/completions'
 
 export const maxDuration = 300
 
-async function callKimi(prompt: string, maxTokens = 8192): Promise<string> {
+async function callKimi(prompt: string, maxTokens = 8192): Promise<{ content: string; debug: string }> {
   const resp = await fetch(MOONSHOT_URL, {
     method: 'POST',
     headers: {
@@ -26,8 +26,18 @@ async function callKimi(prompt: string, maxTokens = 8192): Promise<string> {
       response_format: { type: 'json_object' },
     })
   })
-  const data = await resp.json()
-  return data.choices?.[0]?.message?.content || ''
+  const text = await resp.text()
+  if (!resp.ok) {
+    return { content: '', debug: `HTTP ${resp.status}: ${text.slice(0, 400)}` }
+  }
+  let data: { choices?: { message?: { content?: string }; finish_reason?: string }[]; error?: { message?: string } }
+  try { data = JSON.parse(text) } catch {
+    return { content: '', debug: `Non-JSON response: ${text.slice(0, 400)}` }
+  }
+  if (data.error) return { content: '', debug: `API error: ${data.error.message || JSON.stringify(data.error)}` }
+  const content = data.choices?.[0]?.message?.content || ''
+  const finish = data.choices?.[0]?.finish_reason || 'unknown'
+  return { content, debug: `finish_reason=${finish}, content_len=${content.length}` }
 }
 
 type ClipRow = {
@@ -163,10 +173,14 @@ For each segment, return:
 
 Return JSON: {"lines": [{"line_number": 1, "text": "...", "text_en": "...", "dr_function": "HOOK", "search_tags": ["tag1","tag2"]}, ...]}${learningsContext}`
 
-  const splitResult = await callKimi(splitPrompt, 8000)
-  const segments = extractSegments(splitResult)
+  const splitResp = await callKimi(splitPrompt, 8000)
+  const segments = extractSegments(splitResp.content)
   if (!segments.length) {
-    return NextResponse.json({ error: 'Split failed — Kimi returned unparseable output', raw: splitResult.slice(0, 600) }, { status: 500 })
+    return NextResponse.json({
+      error: 'Split failed — Kimi returned unparseable output',
+      debug: splitResp.debug,
+      raw: splitResp.content.slice(0, 600) || '(empty)'
+    }, { status: 500 })
   }
 
   // ====== PHASE 2: MATCH CLIPS PER SEGMENT (parallel) ======
@@ -221,8 +235,8 @@ ${catalogJson}
 Return JSON: {"matched_clip_ids": [id1, id2, id3, id4, id5]}${learningsContext}`
 
     try {
-      const raw = await callKimi(prompt, 1000)
-      const parsed = JSON.parse(raw)
+      const { content } = await callKimi(prompt, 1000)
+      const parsed = JSON.parse(content)
       const ids = parsed.matched_clip_ids || parsed.ids || []
       return { seg, ids: Array.isArray(ids) ? ids.slice(0, 5) : [] }
     } catch (err) {
