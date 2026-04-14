@@ -9,7 +9,7 @@ function getSupabase() { return createClient(
 const MOONSHOT_KEY = process.env.MOONSHOT_KEY!
 const MOONSHOT_URL = 'https://api.moonshot.ai/v1/chat/completions'
 
-export const maxDuration = 800
+export const maxDuration = 300
 
 async function callLLM(prompt: string): Promise<string> {
   const resp = await fetch(MOONSHOT_URL, {
