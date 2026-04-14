@@ -19,9 +19,9 @@ async function callLLM(prompt: string): Promise<string> {
       'Authorization': `Bearer ${MOONSHOT_KEY}`,
     },
     body: JSON.stringify({
-      model: 'kimi-k2.5',
+      model: 'moonshot-v1-128k',
       messages: [{ role: 'user', content: prompt }],
-      temperature: 1,
+      temperature: 0.6,
       max_tokens: 16384,
       response_format: { type: 'json_object' },
     })
@@ -84,7 +84,13 @@ Use this feedback to AVOID making the same mistakes. If an editor rejected a cli
   }
 
   // Step 2: Build clip catalog for LLM — more detail = better matching
-  const clipCatalog = allClips.map(c => ({
+  // Shuffle clip order so the model doesn't favor the same first-N clips every run
+  const shuffled = [...allClips]
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+  }
+  const clipCatalog = shuffled.map(c => ({
     id: c.id,
     desc: c.description?.substring(0, 200),
     dr: c.dr_function,

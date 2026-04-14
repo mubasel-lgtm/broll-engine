@@ -229,12 +229,35 @@ export default function ProjectsPage() {
     const projectId = proj?.id
     if (projectId) setCurrentProjectId(projectId)
 
-    const resp = await fetch('/api/analyze-script', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ script, product_id: selectedProduct, brand_id: brand?.id || selectedBrand })
-    })
-    const data = await resp.json()
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 290000)
+    let resp: Response
+    try {
+      resp = await fetch('/api/analyze-script', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ script, product_id: selectedProduct, brand_id: brand?.id || selectedBrand }),
+        signal: controller.signal,
+      })
+    } catch (err) {
+      clearTimeout(timeoutId)
+      const msg = err instanceof Error && err.name === 'AbortError'
+        ? 'Die Analyse hat zu lange gedauert (>290s). Kimi/Moonshot hat nicht geantwortet. Versuch es erneut oder kürze das Script.'
+        : 'Netzwerkfehler beim Analysieren: ' + (err instanceof Error ? err.message : String(err))
+      alert(msg)
+      return
+    }
+    clearTimeout(timeoutId)
+    const text = await resp.text()
+    let data: { lines?: ScriptLine[]; error?: string } = {}
+    try { data = JSON.parse(text) } catch {
+      alert(`Server-Fehler (${resp.status}): ${text.slice(0, 200)}`)
+      return
+    }
+    if (!resp.ok) {
+      alert('Analyse fehlgeschlagen: ' + (data.error || `Status ${resp.status}`))
+      return
+    }
     if (data.lines) {
       setLines(data.lines)
       setStep('results')

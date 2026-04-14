@@ -60,11 +60,12 @@ export default function OverlaysPage() {
       try { data = JSON.parse(text) } catch {
         throw new Error(`Server returned ${resp.status}: ${text.slice(0, 200)}`)
       }
-      if (!resp.ok) throw new Error((data.error || 'Generate failed') + (data.detail ? ` — ${data.detail}` : ''))
-      setCurrentHtml(data.html)
-      setHistory(h => [...h, { role: 'user', content: prompt }, { role: 'assistant', content: data.html }])
+      if (!resp.ok || !data.html) throw new Error((data.error || 'Generate failed') + (data.detail ? ` — ${data.detail}` : ''))
+      const html = data.html
+      setCurrentHtml(html)
+      setHistory(h => [...h, { role: 'user', content: prompt }, { role: 'assistant', content: html }])
       setPrompt('')
-      setDurationSeconds(guessDurationFromHtml(data.html))
+      setDurationSeconds(guessDurationFromHtml(html))
       setIsPlaying(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
