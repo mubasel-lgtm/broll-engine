@@ -103,14 +103,25 @@ Use this feedback to AVOID making the same mistakes. If an editor rejected a cli
 
 YOUR JOB: Split the script into B-roll segments. Each segment = ONE distinct visual scene that a video editor would cut to.
 
-SPLITTING RULES:
-- Each segment = ONE visual scene that a video editor would show as B-roll
-- Split when the VISUAL WORLD changes: different subject, different imagery, different setting
-- Keep together words that describe the SAME visual (same scene, same imagery)
-- Short fragments without their own visual ("und gewartet", "im Monat") merge with their neighbor
-- IMPORTANT: Even within ONE sentence, split if the IMAGERY changes! A long sentence can be 2-3 segments if it talks about different visuals.
+SPLITTING RULES — BE AGGRESSIVE:
+- Each segment = ONE visual scene. B-rolls are SHORT (2-4 seconds on screen). If a sentence has 3 different visuals, make 3 segments.
+- Split on EVERY visual change: new subject, new close-up, new setting, new symptom in a list, new action.
+- LISTS OF SYMPTOMS/DETAILS = MULTIPLE SEGMENTS. "widerliche Zähne, braune Beläge, schlechter Atem" = 3 separate B-rolls, not one.
+- EM-DASHES, COMMAS introducing new imagery, SEMICOLONS = strong split signals.
+- A single clause can be its own segment if it has its own distinct visual (5+ words is enough).
+- Only merge tiny connective fragments ("und dann", "im Monat") that truly have no standalone visual.
+- Default bias: WHEN IN DOUBT, SPLIT. A real editor cuts often — every 2-3 seconds.
 
-THE KEY QUESTION for each split decision: "Would a video editor cut to a DIFFERENT clip here?" If yes → split.
+THE KEY QUESTION: "Could I show a different clip here and it would still make sense?" If yes → split.
+
+EXAMPLE — aggressive splitting of a descriptive sentence:
+Script: "Letzte Woche kam ein achtjähriger Hund in meine Praxis – widerliche Zähne, braune Beläge überall, und ein Atem, der den ganzen Untersuchungsraum leer gefegt hatte."
+Split (4 segments):
+1. "Letzte Woche kam ein achtjähriger Hund in meine Praxis" → vet practice, older dog on exam table
+2. "widerliche Zähne" → close-up dog mouth, bad teeth
+3. "braune Beläge überall" → extreme close-up tartar/plaque on teeth
+4. "und ein Atem, der den ganzen Untersuchungsraum leer gefegt hatte" → person reacting to bad breath, holding nose, stepping back
+WHY: Each piece is a DIFFERENT visual. Editor cuts 4 times here, not once.
 
 ${productPrompt || `EXAMPLE 1 — splitting within a sentence:
 Script: "Der Grund dafür ist dass das Gerät nicht mit Filtern arbeitet, sondern mit Negativ-Ionen — bevor du fragst was das ist, das sind dieselben Ionen die nach einem Gewitter in der Luft entstehen, genau deshalb riecht es danach draußen so frisch."
