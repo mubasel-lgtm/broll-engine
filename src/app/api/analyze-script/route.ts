@@ -56,6 +56,40 @@ type Segment = {
   search_tags: string[]
 }
 
+function extractSegments(raw: string): Segment[] {
+  if (!raw) return []
+  const tryParse = (s: string): Segment[] => {
+    try {
+      const parsed = JSON.parse(s)
+      const arr = Array.isArray(parsed) ? parsed : (parsed.lines || parsed.segments || parsed.data || [])
+      return Array.isArray(arr) ? arr : []
+    } catch { return [] }
+  }
+  // Try direct
+  let segs = tryParse(raw.trim())
+  if (segs.length) return segs
+  // Try stripping markdown fences
+  const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/)
+  if (fence) {
+    segs = tryParse(fence[1])
+    if (segs.length) return segs
+  }
+  // Try extracting first {...} or [...]
+  const objStart = raw.indexOf('{')
+  const objEnd = raw.lastIndexOf('}')
+  if (objStart >= 0 && objEnd > objStart) {
+    segs = tryParse(raw.slice(objStart, objEnd + 1))
+    if (segs.length) return segs
+  }
+  const arrStart = raw.indexOf('[')
+  const arrEnd = raw.lastIndexOf(']')
+  if (arrStart >= 0 && arrEnd > arrStart) {
+    segs = tryParse(raw.slice(arrStart, arrEnd + 1))
+    if (segs.length) return segs
+  }
+  return []
+}
+
 export async function POST(req: NextRequest) {
   const { script, product_id, brand_id } = await req.json()
 
@@ -129,16 +163,10 @@ For each segment, return:
 
 Return JSON: {"lines": [{"line_number": 1, "text": "...", "text_en": "...", "dr_function": "HOOK", "search_tags": ["tag1","tag2"]}, ...]}${learningsContext}`
 
-  const splitResult = await callKimi(splitPrompt, 6000)
-  let segments: Segment[] = []
-  try {
-    const parsed = JSON.parse(splitResult)
-    segments = parsed.lines || parsed.segments || []
-  } catch {
-    return NextResponse.json({ error: 'Failed to parse split response', raw: splitResult.slice(0, 300) }, { status: 500 })
-  }
+  const splitResult = await callKimi(splitPrompt, 8000)
+  const segments = extractSegments(splitResult)
   if (!segments.length) {
-    return NextResponse.json({ error: 'No segments produced', raw: splitResult.slice(0, 300) }, { status: 500 })
+    return NextResponse.json({ error: 'Split failed — Kimi returned unparseable output', raw: splitResult.slice(0, 600) }, { status: 500 })
   }
 
   // ====== PHASE 2: MATCH CLIPS PER SEGMENT (parallel) ======
