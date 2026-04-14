@@ -106,6 +106,40 @@ function scoreClip(clip: ClipRow, terms: Set<string>, drFunction: string): numbe
   return score
 }
 
+function extractMatchedIds(raw: string): number[] {
+  if (!raw) return []
+  const tryParse = (s: string): number[] => {
+    try {
+      const parsed = JSON.parse(s)
+      const ids = parsed.matched_clip_ids || parsed.ids || parsed.clip_ids || (Array.isArray(parsed) ? parsed : [])
+      return (Array.isArray(ids) ? ids : []).map(Number).filter(n => Number.isFinite(n))
+    } catch { return [] }
+  }
+  let ids = tryParse(raw.trim())
+  if (ids.length) return ids
+  const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/)
+  if (fence) {
+    ids = tryParse(fence[1])
+    if (ids.length) return ids
+  }
+  const objStart = raw.indexOf('{')
+  const objEnd = raw.lastIndexOf('}')
+  if (objStart >= 0 && objEnd > objStart) {
+    ids = tryParse(raw.slice(objStart, objEnd + 1))
+    if (ids.length) return ids
+  }
+  const arrStart = raw.indexOf('[')
+  const arrEnd = raw.lastIndexOf(']')
+  if (arrStart >= 0 && arrEnd > arrStart) {
+    ids = tryParse(raw.slice(arrStart, arrEnd + 1))
+    if (ids.length) return ids
+  }
+  // Last resort: extract any integers from the response
+  const nums = raw.match(/\b\d{1,6}\b/g)
+  if (nums) return nums.slice(0, 5).map(Number)
+  return []
+}
+
 function extractSegments(raw: string): Segment[] {
   if (!raw) return []
   const tryParse = (s: string): Segment[] => {
@@ -280,15 +314,12 @@ ${JSON.stringify(catalog)}
 
 Return JSON: {"matched_clip_ids": [id1, id2, id3, id4, id5]}${learningsContext}`
 
-    try {
-      const { content } = await callKimi(prompt, 1000)
-      const parsed = JSON.parse(content)
-      const ids = parsed.matched_clip_ids || parsed.ids || []
-      return { seg, ids: Array.isArray(ids) ? ids.slice(0, 5) : [] }
-    } catch (err) {
-      console.error(`Match failed for segment ${seg.line_number}:`, err)
-      return { seg, ids: [] }
+    const { content, debug } = await callKimi(prompt, 2000)
+    const ids = extractMatchedIds(content)
+    if (ids.length === 0) {
+      console.error(`Match failed seg ${seg.line_number}: debug=${debug}, raw=${content.slice(0, 200)}`)
     }
+    return { seg, ids: ids.slice(0, 5) }
   })
 
   const matchResults = await Promise.all(matchPromises)
