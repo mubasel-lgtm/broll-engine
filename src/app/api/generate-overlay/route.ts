@@ -122,35 +122,43 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing prompt' }, { status: 400 })
   }
 
+  if (!GEMINI_KEY) {
+    return NextResponse.json({ error: 'GEMINI_KEY env var is not set in Vercel' }, { status: 500 })
+  }
+
   const userTurn = buildUserTurn(prompt, history)
+  const fullPrompt = SYSTEM_PROMPT + '\n\n===\n\n' + userTurn
 
-  const resp = await fetch(GEMINI_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-      contents: [{ role: 'user', parts: [{ text: userTurn }] }],
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 32768,
-      },
-    }),
-  })
+  try {
+    const resp = await fetch(GEMINI_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 32768,
+        },
+      }),
+    })
 
-  if (!resp.ok) {
-    const text = await resp.text()
-    return NextResponse.json({ error: 'Gemini error', detail: text.slice(0, 500) }, { status: 500 })
+    if (!resp.ok) {
+      const text = await resp.text()
+      return NextResponse.json({ error: 'Gemini returned ' + resp.status, detail: text.slice(0, 500) }, { status: 500 })
+    }
+
+    const data = await resp.json()
+    const raw = data.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text || '').join('') || ''
+    const html = extractHtml(raw)
+
+    if (!html) {
+      return NextResponse.json({ error: 'No HTML in response', raw: raw.slice(0, 500), finishReason: data.candidates?.[0]?.finishReason }, { status: 500 })
+    }
+
+    return NextResponse.json({ html })
+  } catch (err) {
+    return NextResponse.json({ error: 'Request failed', detail: err instanceof Error ? err.message : String(err) }, { status: 500 })
   }
-
-  const data = await resp.json()
-  const raw = data.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text || '').join('') || ''
-  const html = extractHtml(raw)
-
-  if (!html) {
-    return NextResponse.json({ error: 'No HTML in response', raw: raw.slice(0, 500) }, { status: 500 })
-  }
-
-  return NextResponse.json({ html })
 }
 
 type HistoryTurn = { role: 'user' | 'assistant'; content: string }

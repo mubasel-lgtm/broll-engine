@@ -55,8 +55,12 @@ export default function OverlaysPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt, history }),
       })
-      const data = await resp.json()
-      if (!resp.ok) throw new Error(data.error || 'Generate failed')
+      const text = await resp.text()
+      let data: { html?: string; error?: string; detail?: string } = {}
+      try { data = JSON.parse(text) } catch {
+        throw new Error(`Server returned ${resp.status}: ${text.slice(0, 200)}`)
+      }
+      if (!resp.ok) throw new Error((data.error || 'Generate failed') + (data.detail ? ` — ${data.detail}` : ''))
       setCurrentHtml(data.html)
       setHistory(h => [...h, { role: 'user', content: prompt }, { role: 'assistant', content: data.html }])
       setPrompt('')
