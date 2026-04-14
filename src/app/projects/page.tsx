@@ -874,7 +874,7 @@ export default function ProjectsPage() {
                                   const resp = await fetch('/api/suggest-concepts', {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ script_line: line.text, dr_function: line.dr_function, full_script: script, product_name: products.find(p => p.id === selectedProduct)?.name })
+                                    body: JSON.stringify({ script_line: line.text, dr_function: line.dr_function, full_script: script, product_name: products.find(p => p.id === selectedProduct)?.name, has_aroll: !!arollBase64, speaker_description: speakerDesc })
                                   })
                                   const data = await resp.json()
                                   setConcepts(data.concepts || [])
@@ -904,7 +904,7 @@ export default function ProjectsPage() {
                               const resp = await fetch('/api/suggest-concepts', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ script_line: line.text, dr_function: line.dr_function, full_script: script, product_name: products.find(p => p.id === selectedProduct)?.name })
+                                body: JSON.stringify({ script_line: line.text, dr_function: line.dr_function, full_script: script, product_name: products.find(p => p.id === selectedProduct)?.name, has_aroll: !!arollBase64, speaker_description: speakerDesc })
                               })
                               const data = await resp.json()
                               setConcepts(data.concepts || [])
