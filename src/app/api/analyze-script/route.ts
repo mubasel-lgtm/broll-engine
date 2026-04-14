@@ -238,52 +238,81 @@ Return JSON: {"lines": [{"line_number": 1, "text": "...", "text_en": "...", "dr_
   }))
   const fullCatalogJson = JSON.stringify(fullCatalog)
 
-  const matchPromises = segments.map(async (seg, idx) => {
-    const prev = segments[idx - 1]
-    const next = segments[idx + 1]
-    const neighbors = [
-      prev ? `PREVIOUS LINE: "${prev.text}"` : '',
-      next ? `NEXT LINE: "${next.text}"` : '',
-    ].filter(Boolean).join('\n')
+  // Single batched call — all segments matched together so Gemini can
+  // allocate clips across segments without reusing the same clip for
+  // everything. Flash's 1M context easily holds the full catalog + all
+  // segments + the script.
+  const segmentsForPrompt = segments.map(s => ({
+    line_number: s.line_number,
+    text: s.text,
+    dr_function: s.dr_function,
+    search_tags: s.search_tags,
+  }))
 
-    const prompt = `You are a UGC direct-response video ad editor picking B-roll clips for ONE script segment.${productHeader}
+  const matchPrompt = `You are a UGC direct-response video ad editor. You have a German script split into segments and a library of B-roll clips. Pick the TOP 5 best-matching clips for EACH segment.${productHeader}
 
-TARGET SEGMENT (line ${seg.line_number}):
-"${seg.text}"
-DR function: ${seg.dr_function}
-Visual tags: ${seg.search_tags.join(', ')}
+FULL SCRIPT CONTEXT:
+"""
+${script}
+"""
 
-${neighbors ? `CONTEXT:\n${neighbors}\n` : ''}
+SEGMENTS TO MATCH (${segments.length}):
+${JSON.stringify(segmentsForPrompt)}
+
 MATCHING RULES:
-- Match on VISUAL MEANING. Read the context — a noun often means something different in this product's context than literally.
+- Match on VISUAL MEANING, not just keywords. Read the full script — pronouns and verbs mean what the surrounding lines imply.
 - Think: what would a video editor CUT TO here? The product in action, the metaphor, not the literal noun.
-- Pick 5 distinct clips — variety is important. Avoid near-duplicates.
-- NEVER match just because a clip shares a DR function.
+- Pick 5 DISTINCT clips per segment — variety is critical. Avoid near-duplicates within a segment.
+- CROSS-SEGMENT DIVERSITY IS CRITICAL: the same clip should NOT appear as a top pick for multiple segments unless it genuinely fits all of them. Spread the library across segments so no clip gets overused. If you notice you're reaching for the same 5 clips repeatedly, force yourself to find alternatives.
+- NEVER match just because a clip shares a DR function. The VISUAL CONTENT must match.
+- For fragment segments ("und gewartet", "im Monat") that lack a clear visual: pick clips that match the PARENT idea from the surrounding lines, not generic filler.
 
 UGC STYLE — CRITICAL:
-- Must look like real person filmed on phone. Real homes, casual, natural lighting.
-- NEVER studios, TV shows, news broadcasts, stages, game shows, studio audiences.
+- Must look like real person filmed on phone. Real homes, casual lighting, iPhone quality.
+- NEVER studios, TV shows, news broadcasts, stages, game shows, professional sets.
 
 ${productPrompt ? 'PRODUCT-SPECIFIC MATCHING HINTS:\n' + productPrompt + '\n' : ''}
-CLIP LIBRARY (${fullCatalog.length} clips):
+CLIP LIBRARY (${fullCatalog.length} clips — all are videos, no images, shuffled for fairness):
 ${fullCatalogJson}
 
-Return JSON: {"matched_clip_ids": [id1, id2, id3, id4, id5]}${learningsContext}`
+Return a JSON object with a "matches" key mapping line_number to array of exactly 5 clip IDs (most relevant first):
+{"matches": {"1": [id, id, id, id, id], "2": [id, id, id, id, id], ...}}${learningsContext}`
 
-    // Matching with no thinking — fast parallel picks from pre-filtered shortlist
-    const { content, debug } = await callLLM(prompt, 2000, 0)
-    const ids = extractMatchedIds(content)
-    if (ids.length === 0) {
-      console.error(`Match failed seg ${seg.line_number}: debug=${debug}, raw=${content.slice(0, 200)}`)
+  // Matching with moderate thinking budget for cross-segment reasoning
+  const matchMaxTokens = Math.max(4000, segments.length * 200)
+  const { content: matchContent, debug: matchDebug } = await callLLM(matchPrompt, matchMaxTokens, 1024)
+
+  let matchesById: Record<string, number[]> = {}
+  try {
+    const parsed = JSON.parse(matchContent)
+    matchesById = parsed.matches || parsed.lines || parsed || {}
+  } catch {
+    const objStart = matchContent.indexOf('{')
+    const objEnd = matchContent.lastIndexOf('}')
+    if (objStart >= 0 && objEnd > objStart) {
+      try {
+        const parsed = JSON.parse(matchContent.slice(objStart, objEnd + 1))
+        matchesById = parsed.matches || parsed.lines || parsed || {}
+      } catch {}
     }
-    return { seg, ids: ids.slice(0, 5) }
-  })
+  }
 
-  const matchResults = await Promise.all(matchPromises)
+  if (Object.keys(matchesById).length === 0) {
+    return NextResponse.json({
+      error: 'Batched match failed — Gemini returned unparseable output',
+      debug: matchDebug,
+      raw: matchContent.slice(0, 600) || '(empty)',
+    }, { status: 500 })
+  }
 
   // Build response
   const clipMap = new Map(allClips.map(c => [c.id, c]))
-  const output = matchResults.map(({ seg, ids }) => {
+  const output = segments.map(seg => {
+    const ids = (matchesById[String(seg.line_number)] || matchesById[seg.line_number as unknown as string] || [])
+      .map(Number)
+      .filter((n: number) => Number.isFinite(n))
+      .slice(0, 5)
+
     const matches = ids
       .map((id: number, i: number) => {
         const clip = clipMap.get(id)
