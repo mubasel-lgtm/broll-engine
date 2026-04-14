@@ -9,6 +9,8 @@ function getSupabase() { return createClient(
 const MOONSHOT_KEY = process.env.MOONSHOT_KEY!
 const MOONSHOT_URL = 'https://api.moonshot.ai/v1/chat/completions'
 
+export const maxDuration = 800
+
 async function callLLM(prompt: string): Promise<string> {
   const resp = await fetch(MOONSHOT_URL, {
     method: 'POST',
@@ -17,10 +19,10 @@ async function callLLM(prompt: string): Promise<string> {
       'Authorization': `Bearer ${MOONSHOT_KEY}`,
     },
     body: JSON.stringify({
-      model: 'moonshot-v1-128k',
+      model: 'kimi-k2.5',
       messages: [{ role: 'user', content: prompt }],
-      temperature: 0.1,
-      max_tokens: 8192,
+      temperature: 1,
+      max_tokens: 16384,
       response_format: { type: 'json_object' },
     })
   })
