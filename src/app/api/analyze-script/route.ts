@@ -1,45 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-function getSupabase() { return createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)}
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+}
 
 const GEMINI_KEY = process.env.GEMINI_KEY!
-const GEMINI_MODEL = 'gemini-2.5-flash'
+const GEMINI_MODEL = 'gemini-2.5-pro'
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_KEY}`
 
 export const maxDuration = 300
-
-async function callLLM(prompt: string, maxTokens = 8192, thinkingBudget = 0): Promise<{ content: string; debug: string }> {
-  const resp = await fetch(GEMINI_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: maxTokens,
-        responseMimeType: 'application/json',
-        thinkingConfig: { thinkingBudget },
-      },
-    }),
-  })
-  const text = await resp.text()
-  if (!resp.ok) {
-    return { content: '', debug: `HTTP ${resp.status}: ${text.slice(0, 400)}` }
-  }
-  let data: { candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[]; error?: { message?: string } }
-  try { data = JSON.parse(text) } catch {
-    return { content: '', debug: `Non-JSON response: ${text.slice(0, 400)}` }
-  }
-  if (data.error) return { content: '', debug: `API error: ${data.error.message || JSON.stringify(data.error)}` }
-  const parts = data.candidates?.[0]?.content?.parts || []
-  const content = parts.map(p => p.text || '').join('')
-  const finish = data.candidates?.[0]?.finishReason || 'unknown'
-  return { content, debug: `finish=${finish}, len=${content.length}` }
-}
 
 type ClipRow = {
   id: number
@@ -59,95 +32,48 @@ type ClipRow = {
   filetype: string | null
 }
 
-type Segment = {
+type OutLine = {
   line_number: number
   text: string
   text_en: string
   dr_function: string
   search_tags: string[]
+  matched_clip_ids: number[]
 }
 
-function extractMatchedIds(raw: string): number[] {
+function extractLines(raw: string): OutLine[] {
   if (!raw) return []
-  const tryParse = (s: string): number[] => {
-    try {
-      const parsed = JSON.parse(s)
-      const ids = parsed.matched_clip_ids || parsed.ids || parsed.clip_ids || (Array.isArray(parsed) ? parsed : [])
-      return (Array.isArray(ids) ? ids : []).map(Number).filter(n => Number.isFinite(n))
-    } catch { return [] }
-  }
-  let ids = tryParse(raw.trim())
-  if (ids.length) return ids
-  const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/)
-  if (fence) {
-    ids = tryParse(fence[1])
-    if (ids.length) return ids
-  }
-  const objStart = raw.indexOf('{')
-  const objEnd = raw.lastIndexOf('}')
-  if (objStart >= 0 && objEnd > objStart) {
-    ids = tryParse(raw.slice(objStart, objEnd + 1))
-    if (ids.length) return ids
-  }
-  const arrStart = raw.indexOf('[')
-  const arrEnd = raw.lastIndexOf(']')
-  if (arrStart >= 0 && arrEnd > arrStart) {
-    ids = tryParse(raw.slice(arrStart, arrEnd + 1))
-    if (ids.length) return ids
-  }
-  // Last resort: extract any integers from the response
-  const nums = raw.match(/\b\d{1,6}\b/g)
-  if (nums) return nums.slice(0, 5).map(Number)
-  return []
-}
-
-function extractSegments(raw: string): Segment[] {
-  if (!raw) return []
-  const tryParse = (s: string): Segment[] => {
+  const tryParse = (s: string): OutLine[] => {
     try {
       const parsed = JSON.parse(s)
       const arr = Array.isArray(parsed) ? parsed : (parsed.lines || parsed.segments || parsed.data || [])
       return Array.isArray(arr) ? arr : []
     } catch { return [] }
   }
-  // Try direct
-  let segs = tryParse(raw.trim())
-  if (segs.length) return segs
-  // Try stripping markdown fences
+  let out = tryParse(raw.trim())
+  if (out.length) return out
   const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/)
-  if (fence) {
-    segs = tryParse(fence[1])
-    if (segs.length) return segs
-  }
-  // Try extracting first {...} or [...]
-  const objStart = raw.indexOf('{')
-  const objEnd = raw.lastIndexOf('}')
-  if (objStart >= 0 && objEnd > objStart) {
-    segs = tryParse(raw.slice(objStart, objEnd + 1))
-    if (segs.length) return segs
-  }
-  const arrStart = raw.indexOf('[')
-  const arrEnd = raw.lastIndexOf(']')
-  if (arrStart >= 0 && arrEnd > arrStart) {
-    segs = tryParse(raw.slice(arrStart, arrEnd + 1))
-    if (segs.length) return segs
-  }
+  if (fence) { out = tryParse(fence[1]); if (out.length) return out }
+  const s = raw.indexOf('{'), e = raw.lastIndexOf('}')
+  if (s >= 0 && e > s) { out = tryParse(raw.slice(s, e + 1)); if (out.length) return out }
   return []
 }
 
 export async function POST(req: NextRequest) {
   const { script, product_id, brand_id } = await req.json()
 
-  // Load product / brand / learnings in parallel
   const [brandRes, productRes] = await Promise.all([
-    brand_id ? getSupabase().from('brands').select('name').eq('id', brand_id).single() : Promise.resolve({ data: null as { name: string } | null }),
-    product_id ? getSupabase().from('products').select('name, matching_prompt').eq('id', product_id).single() : Promise.resolve({ data: null as { name: string; matching_prompt: string } | null }),
+    brand_id
+      ? getSupabase().from('brands').select('name').eq('id', brand_id).single()
+      : Promise.resolve({ data: null as { name: string } | null }),
+    product_id
+      ? getSupabase().from('products').select('name, matching_prompt').eq('id', product_id).single()
+      : Promise.resolve({ data: null as { name: string; matching_prompt: string } | null }),
   ])
   const brandName = brandRes.data?.name || ''
   const productName = productRes.data?.name || ''
   const productPrompt = productRes.data?.matching_prompt || ''
 
-  // Load clips filtered by product (preferred) or brand
   let clipQuery = getSupabase()
     .from('clips')
     .select('id, filename, description, dr_function, tags, mood, setting, has_product, has_person, person_gender, thumbnail_url, drive_url, reusability, camera_movement, filetype')
@@ -161,7 +87,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No clips in library' }, { status: 500 })
   }
 
-  // Load learnings
   let learningsContext = ''
   if (product_id || brand_id) {
     let q = getSupabase().from('learnings').select('script_line, dr_function, rejection_reason, editor_note').order('created_at', { ascending: false }).limit(30)
@@ -169,64 +94,17 @@ export async function POST(req: NextRequest) {
     else if (brand_id) q = q.eq('brand_id', brand_id)
     const { data: learnings } = await q
     if (learnings && learnings.length > 0) {
-      learningsContext = `\n\nPAST EDITOR FEEDBACK — Learn from these rejections:\n${learnings.map(l => `- "${l.script_line}" (${l.dr_function}) REJECTED: ${l.rejection_reason}${l.editor_note ? ` (${l.editor_note})` : ''}`).join('\n')}\n\nAvoid these mistakes.`
+      learningsContext = `\n\nPAST EDITOR FEEDBACK — avoid these mistakes:\n${learnings.map(l => `- "${l.script_line}" (${l.dr_function}) REJECTED: ${l.rejection_reason}${l.editor_note ? ` (${l.editor_note})` : ''}`).join('\n')}`
     }
   }
 
-  // ====== PHASE 1: SPLIT SCRIPT (small prompt, fast) ======
-  const productHeader = productName ? `\n\nPRODUCT: ${productName}\n(All script lines are for this product. When a line mentions a noun, interpret it in the product's context, not literally.)` : ''
-
-  const splitPrompt = `You are a direct-response video ad editor splitting a German script into B-roll segments.${productHeader}
-
-SPLITTING RULES — BE AGGRESSIVE:
-- Each segment = ONE visual scene. B-rolls are SHORT (2-4 seconds on screen).
-- If a sentence has 3 different visuals, make 3 segments. Lists of symptoms/details = MULTIPLE segments.
-- Em-dashes, commas introducing new imagery, semicolons = strong split signals.
-- A 5-word clause with its own clear visual is enough for a segment.
-- Only merge tiny connective fragments ("und dann", "im Monat") without standalone visual.
-- Default bias: WHEN IN DOUBT, SPLIT.
-
-EXAMPLE — aggressive split:
-Script: "Letzte Woche kam ein achtjähriger Hund in meine Praxis – widerliche Zähne, braune Beläge überall, und ein Atem, der den Untersuchungsraum leer gefegt hatte."
-Split (4 segments):
-1. "Letzte Woche kam ein achtjähriger Hund in meine Praxis" → vet practice, older dog
-2. "widerliche Zähne" → close-up dog mouth
-3. "braune Beläge überall" → extreme close-up tartar
-4. "und ein Atem, der den Untersuchungsraum leer gefegt hatte" → reaction to bad breath
-
-${productPrompt ? 'PRODUCT-SPECIFIC EXAMPLES + HINTS:\n' + productPrompt : ''}
-
-SCRIPT:
-${script}
-
-For each segment, return:
-- line_number (1-indexed)
-- text (exact script text)
-- text_en (natural English translation for Filipino editors)
-- dr_function (HOOK|PROBLEM|MECHANISM|PRODUCT|OUTCOME|SOCIAL_PROOF|CTA|LIFESTYLE)
-- search_tags (array of 2-4 visual keywords like "dog teeth close-up", "vet practice")
-
-Return JSON: {"lines": [{"line_number": 1, "text": "...", "text_en": "...", "dr_function": "HOOK", "search_tags": ["tag1","tag2"]}, ...]}${learningsContext}`
-
-  // Splitting gets a small thinking budget for nuance
-  const splitResp = await callLLM(splitPrompt, 8000, 512)
-  const segments = extractSegments(splitResp.content)
-  if (!segments.length) {
-    return NextResponse.json({
-      error: 'Split failed — Gemini returned unparseable output',
-      debug: splitResp.debug,
-      raw: splitResp.content.slice(0, 600) || '(empty)'
-    }, { status: 500 })
-  }
-
-  // ====== PHASE 2: MATCH CLIPS PER SEGMENT (parallel) ======
-  // Gemini 2.5 Flash has 1M context — send full shuffled catalog, let the model pick best
-  const shuffledAll = [...allClips]
-  for (let i = shuffledAll.length - 1; i > 0; i--) {
+  // Shuffle catalog to avoid position bias
+  const shuffled = [...allClips]
+  for (let i = shuffled.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1))
-    ;[shuffledAll[i], shuffledAll[j]] = [shuffledAll[j], shuffledAll[i]]
+    ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
   }
-  const fullCatalog = shuffledAll.map(c => ({
+  const catalog = shuffled.map(c => ({
     id: c.id,
     desc: c.description?.substring(0, 200),
     dr: c.dr_function,
@@ -236,84 +114,98 @@ Return JSON: {"lines": [{"line_number": 1, "text": "...", "text_en": "...", "dr_
     person: c.has_person,
     product: c.has_product,
   }))
-  const fullCatalogJson = JSON.stringify(fullCatalog)
 
-  // Single batched call — all segments matched together so Gemini can
-  // allocate clips across segments without reusing the same clip for
-  // everything. Flash's 1M context easily holds the full catalog + all
-  // segments + the script.
-  const segmentsForPrompt = segments.map(s => ({
-    line_number: s.line_number,
-    text: s.text,
-    dr_function: s.dr_function,
-    search_tags: s.search_tags,
-  }))
+  const productHeader = productName
+    ? `\nPRODUCT: ${productName}\nEvery line is part of an ad for this product. Resolve pronouns and nouns in this context — if the product is about dogs, "sie konnte nicht mehr laufen" means the DOG couldn't walk.\n`
+    : ''
 
-  const matchPrompt = `You are a UGC direct-response video ad editor. You have a German script split into segments and a library of B-roll clips. Pick the TOP 5 best-matching clips for EACH segment.${productHeader}
+  const prompt = `You are a direct-response UGC video ad editor splitting a German script into B-roll segments and picking 5 matching clips for each from a library.
+${productHeader}
+SPLITTING — be aggressive but not mechanical:
+- Each segment = ONE visual scene (2-4 seconds on screen).
+- Split when the imagery changes: new subject, new action, new symptom in a list, new setting.
+- Em-dashes, semicolons, commas introducing new imagery are strong split signals.
+- A 5+ word clause with its own clear visual is its own segment.
+- Merge tiny connective fragments that have no standalone visual ("und dann", "im Monat").
+- Default: when unsure, SPLIT.
 
-FULL SCRIPT CONTEXT:
+EXAMPLE — aggressive split across a descriptive sentence:
+"Letzte Woche kam ein achtjähriger Hund in meine Praxis – widerliche Zähne, braune Beläge überall, und ein Atem, der den Raum leer gefegt hatte." → 4 segments:
+1. "Letzte Woche kam ein achtjähriger Hund in meine Praxis" → vet practice, older dog
+2. "widerliche Zähne" → close-up dog mouth
+3. "braune Beläge überall" → extreme close-up tartar
+4. "und ein Atem, der den Raum leer gefegt hatte" → reaction to bad breath
+
+MATCHING — pick the TOP 5 clip IDs per segment from the library:
+- Match on VISUAL MEANING, not keyword overlap. Use the FULL SCRIPT to understand what this line is really about — the product in action, the metaphor, not the literal noun.
+- For each segment: 5 DISTINCT clips, variety is critical, avoid near-duplicates.
+- CROSS-SEGMENT DIVERSITY: spread the library across segments. The same "good" clip should not appear in every segment. If you notice you're reusing the same 3-5 clips everywhere, force yourself to find alternatives from deeper in the catalog.
+- If the script says "sie probieren Febreze" and there's a clip of someone spraying Febreze, USE IT — specific visual matches are always better than generic "spraying" stand-ins.
+- NEVER pick a clip just because it shares a DR function with the segment.
+
+UGC STYLE — CRITICAL:
+- UGC testimonial ad — must look like a real person filmed on a phone.
+- Never studios, TV shows, news broadcasts, stages, game shows, studio audiences, professional lighting.
+- Prefer real homes, kitchens, living rooms, casual natural lighting, one or two normal people.
+- A clip with the right emotion in the wrong setting (studio, stage) is WORSE than a clip with a less perfect emotion in an authentic home setting.
+
+${productPrompt ? `PRODUCT-SPECIFIC EXAMPLES & MATCHING HINTS:\n${productPrompt}\n` : ''}
+SCRIPT:
 """
 ${script}
 """
 
-SEGMENTS TO MATCH (${segments.length}):
-${JSON.stringify(segmentsForPrompt)}
+CLIP LIBRARY (${catalog.length} clips, all videos, no images, shuffled):
+${JSON.stringify(catalog)}
 
-MATCHING RULES:
-- Match on VISUAL MEANING, not just keywords. Read the full script — pronouns and verbs mean what the surrounding lines imply.
-- Think: what would a video editor CUT TO here? The product in action, the metaphor, not the literal noun.
-- Pick 5 DISTINCT clips per segment — variety is critical. Avoid near-duplicates within a segment.
-- CROSS-SEGMENT DIVERSITY IS CRITICAL: the same clip should NOT appear as a top pick for multiple segments unless it genuinely fits all of them. Spread the library across segments so no clip gets overused. If you notice you're reaching for the same 5 clips repeatedly, force yourself to find alternatives.
-- NEVER match just because a clip shares a DR function. The VISUAL CONTENT must match.
-- For fragment segments ("und gewartet", "im Monat") that lack a clear visual: pick clips that match the PARENT idea from the surrounding lines, not generic filler.
+Return JSON with a "lines" array. Each element:
+{"line_number": 1, "text": "exact script text", "text_en": "natural English translation for Filipino editors", "dr_function": "HOOK|PROBLEM|MECHANISM|PRODUCT|OUTCOME|SOCIAL_PROOF|CTA|LIFESTYLE", "search_tags": ["tag1","tag2"], "matched_clip_ids": [id, id, id, id, id]}
 
-UGC STYLE — CRITICAL:
-- Must look like real person filmed on phone. Real homes, casual lighting, iPhone quality.
-- NEVER studios, TV shows, news broadcasts, stages, game shows, professional sets.
+Format: {"lines": [...]}${learningsContext}`
 
-${productPrompt ? 'PRODUCT-SPECIFIC MATCHING HINTS:\n' + productPrompt + '\n' : ''}
-CLIP LIBRARY (${fullCatalog.length} clips — all are videos, no images, shuffled for fairness):
-${fullCatalogJson}
+  const resp = await fetch(GEMINI_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: 0.8,
+        maxOutputTokens: 16000,
+        responseMimeType: 'application/json',
+        thinkingConfig: { thinkingBudget: 4096 },
+      },
+    }),
+  })
 
-Return a JSON object with a "matches" key mapping line_number to array of exactly 5 clip IDs (most relevant first):
-{"matches": {"1": [id, id, id, id, id], "2": [id, id, id, id, id], ...}}${learningsContext}`
-
-  // Matching with moderate thinking budget for cross-segment reasoning
-  const matchMaxTokens = Math.max(4000, segments.length * 200)
-  const { content: matchContent, debug: matchDebug } = await callLLM(matchPrompt, matchMaxTokens, 1024)
-
-  let matchesById: Record<string, number[]> = {}
-  try {
-    const parsed = JSON.parse(matchContent)
-    matchesById = parsed.matches || parsed.lines || parsed || {}
-  } catch {
-    const objStart = matchContent.indexOf('{')
-    const objEnd = matchContent.lastIndexOf('}')
-    if (objStart >= 0 && objEnd > objStart) {
-      try {
-        const parsed = JSON.parse(matchContent.slice(objStart, objEnd + 1))
-        matchesById = parsed.matches || parsed.lines || parsed || {}
-      } catch {}
-    }
+  const raw = await resp.text()
+  if (!resp.ok) {
+    return NextResponse.json({ error: `Gemini HTTP ${resp.status}`, raw: raw.slice(0, 600) }, { status: 500 })
   }
+  let data: { candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[]; error?: { message?: string } }
+  try { data = JSON.parse(raw) } catch {
+    return NextResponse.json({ error: 'Non-JSON response from Gemini', raw: raw.slice(0, 600) }, { status: 500 })
+  }
+  if (data.error) return NextResponse.json({ error: `Gemini error: ${data.error.message}` }, { status: 500 })
 
-  if (Object.keys(matchesById).length === 0) {
+  const parts = data.candidates?.[0]?.content?.parts || []
+  const content = parts.map(p => p.text || '').join('')
+  const finish = data.candidates?.[0]?.finishReason || 'unknown'
+
+  const lines = extractLines(content)
+  if (!lines.length) {
     return NextResponse.json({
-      error: 'Batched match failed — Gemini returned unparseable output',
-      debug: matchDebug,
-      raw: matchContent.slice(0, 600) || '(empty)',
+      error: 'Gemini returned unparseable output',
+      debug: `finish=${finish}, len=${content.length}`,
+      raw: content.slice(0, 600) || '(empty)',
     }, { status: 500 })
   }
 
-  // Build response
   const clipMap = new Map(allClips.map(c => [c.id, c]))
-  const output = segments.map(seg => {
-    const ids = (matchesById[String(seg.line_number)] || matchesById[seg.line_number as unknown as string] || [])
+  const output = lines.map(line => {
+    const matches = (line.matched_clip_ids || [])
       .map(Number)
       .filter((n: number) => Number.isFinite(n))
       .slice(0, 5)
-
-    const matches = ids
       .map((id: number, i: number) => {
         const clip = clipMap.get(id)
         if (!clip) return null
@@ -322,11 +214,11 @@ Return a JSON object with a "matches" key mapping line_number to array of exactl
       .filter(Boolean)
 
     return {
-      line_number: seg.line_number,
-      text: seg.text,
-      text_en: seg.text_en || '',
-      dr_function: seg.dr_function,
-      search_tags: seg.search_tags || [],
+      line_number: line.line_number,
+      text: line.text,
+      text_en: line.text_en || '',
+      dr_function: line.dr_function,
+      search_tags: line.search_tags || [],
       matches,
     }
   })
