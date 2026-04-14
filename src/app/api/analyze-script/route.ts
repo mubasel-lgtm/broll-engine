@@ -9,8 +9,50 @@ function getSupabase() {
 }
 
 const GEMINI_KEY = process.env.GEMINI_KEY!
-const GEMINI_MODEL = 'gemini-2.5-pro'
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_KEY}`
+const geminiUrl = (model: string) => `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`
+
+async function callGemini(model: string, prompt: string, thinkingBudget: number, maxTokens = 16000): Promise<{ ok: boolean; content: string; status: number; error?: string }> {
+  const resp = await fetch(geminiUrl(model), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: 0.8,
+        maxOutputTokens: maxTokens,
+        responseMimeType: 'application/json',
+        thinkingConfig: { thinkingBudget },
+      },
+    }),
+  })
+  const raw = await resp.text()
+  if (!resp.ok) return { ok: false, content: '', status: resp.status, error: raw.slice(0, 400) }
+  let data: { candidates?: { content?: { parts?: { text?: string }[] } }[]; error?: { message?: string } }
+  try { data = JSON.parse(raw) } catch { return { ok: false, content: '', status: 502, error: `Non-JSON: ${raw.slice(0, 400)}` } }
+  if (data.error) return { ok: false, content: '', status: 500, error: data.error.message }
+  const parts = data.candidates?.[0]?.content?.parts || []
+  return { ok: true, content: parts.map(p => p.text || '').join(''), status: 200 }
+}
+
+async function callGeminiWithFallback(prompt: string): Promise<{ content: string; modelUsed: string; attempts: string[] }> {
+  const attempts: string[] = []
+
+  // Try Pro up to 2x (demand spikes are usually brief)
+  for (let i = 0; i < 2; i++) {
+    const r = await callGemini('gemini-2.5-pro', prompt, 4096)
+    attempts.push(`pro-${i}: ${r.ok ? 'ok' : `${r.status} ${r.error?.slice(0, 60)}`}`)
+    if (r.ok) return { content: r.content, modelUsed: 'gemini-2.5-pro', attempts }
+    if (r.status !== 503 && r.status !== 429) break
+    await new Promise(res => setTimeout(res, 1500))
+  }
+
+  // Fallback to Flash with higher thinking budget
+  const flash = await callGemini('gemini-2.5-flash', prompt, 2048)
+  attempts.push(`flash: ${flash.ok ? 'ok' : `${flash.status} ${flash.error?.slice(0, 60)}`}`)
+  if (flash.ok) return { content: flash.content, modelUsed: 'gemini-2.5-flash', attempts }
+
+  throw new Error(`All Gemini models failed. Attempts: ${attempts.join(' | ')}`)
+}
 
 export const maxDuration = 300
 
@@ -163,39 +205,23 @@ Return JSON with a "lines" array. Each element:
 
 Format: {"lines": [...]}${learningsContext}`
 
-  const resp = await fetch(GEMINI_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.8,
-        maxOutputTokens: 16000,
-        responseMimeType: 'application/json',
-        thinkingConfig: { thinkingBudget: 4096 },
-      },
-    }),
-  })
-
-  const raw = await resp.text()
-  if (!resp.ok) {
-    return NextResponse.json({ error: `Gemini HTTP ${resp.status}`, raw: raw.slice(0, 600) }, { status: 500 })
+  let content: string, modelUsed: string, attempts: string[]
+  try {
+    const r = await callGeminiWithFallback(prompt)
+    content = r.content
+    modelUsed = r.modelUsed
+    attempts = r.attempts
+  } catch (err) {
+    return NextResponse.json({
+      error: err instanceof Error ? err.message : 'Gemini failed',
+    }, { status: 503 })
   }
-  let data: { candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[]; error?: { message?: string } }
-  try { data = JSON.parse(raw) } catch {
-    return NextResponse.json({ error: 'Non-JSON response from Gemini', raw: raw.slice(0, 600) }, { status: 500 })
-  }
-  if (data.error) return NextResponse.json({ error: `Gemini error: ${data.error.message}` }, { status: 500 })
-
-  const parts = data.candidates?.[0]?.content?.parts || []
-  const content = parts.map(p => p.text || '').join('')
-  const finish = data.candidates?.[0]?.finishReason || 'unknown'
 
   const lines = extractLines(content)
   if (!lines.length) {
     return NextResponse.json({
       error: 'Gemini returned unparseable output',
-      debug: `finish=${finish}, len=${content.length}`,
+      debug: `model=${modelUsed}, attempts=${attempts.join('|')}, len=${content.length}`,
       raw: content.slice(0, 600) || '(empty)',
     }, { status: 500 })
   }
