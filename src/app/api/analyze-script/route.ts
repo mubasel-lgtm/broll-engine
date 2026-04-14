@@ -6,38 +6,39 @@ function getSupabase() { return createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )}
 
-const MOONSHOT_KEY = process.env.MOONSHOT_KEY!
-const MOONSHOT_URL = 'https://api.moonshot.ai/v1/chat/completions'
+const GEMINI_KEY = process.env.GEMINI_KEY!
+const GEMINI_MODEL = 'gemini-2.5-flash'
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_KEY}`
 
 export const maxDuration = 300
 
-async function callKimi(prompt: string, maxTokens = 8192): Promise<{ content: string; debug: string }> {
-  const resp = await fetch(MOONSHOT_URL, {
+async function callLLM(prompt: string, maxTokens = 8192, thinkingBudget = 0): Promise<{ content: string; debug: string }> {
+  const resp = await fetch(GEMINI_URL, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${MOONSHOT_KEY}`,
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'kimi-k2-turbo-preview',
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.6,
-      max_tokens: maxTokens,
-      response_format: { type: 'json_object' },
-    })
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: maxTokens,
+        responseMimeType: 'application/json',
+        thinkingConfig: { thinkingBudget },
+      },
+    }),
   })
   const text = await resp.text()
   if (!resp.ok) {
     return { content: '', debug: `HTTP ${resp.status}: ${text.slice(0, 400)}` }
   }
-  let data: { choices?: { message?: { content?: string }; finish_reason?: string }[]; error?: { message?: string } }
+  let data: { candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[]; error?: { message?: string } }
   try { data = JSON.parse(text) } catch {
     return { content: '', debug: `Non-JSON response: ${text.slice(0, 400)}` }
   }
   if (data.error) return { content: '', debug: `API error: ${data.error.message || JSON.stringify(data.error)}` }
-  const content = data.choices?.[0]?.message?.content || ''
-  const finish = data.choices?.[0]?.finish_reason || 'unknown'
-  return { content, debug: `finish_reason=${finish}, content_len=${content.length}` }
+  const parts = data.candidates?.[0]?.content?.parts || []
+  const content = parts.map(p => p.text || '').join('')
+  const finish = data.candidates?.[0]?.finishReason || 'unknown'
+  return { content, debug: `finish=${finish}, len=${content.length}` }
 }
 
 type ClipRow = {
@@ -64,46 +65,6 @@ type Segment = {
   text_en: string
   dr_function: string
   search_tags: string[]
-}
-
-const STOPWORDS = new Set([
-  'der','die','das','den','dem','des','ein','eine','einer','einem','einen','eines',
-  'und','oder','aber','weil','dass','ist','sind','war','waren','war','hab','habe','hat','haben','hatte','hatten',
-  'ich','du','er','sie','es','wir','ihr','mich','mir','dich','dir','ihn','ihm','ihnen','uns','euch',
-  'mein','dein','sein','ihr','unser','euer','nicht','kein','keine','auch','nur','sehr','schon','noch','mal','so',
-  'the','a','an','and','or','but','is','are','was','were','of','to','in','on','at','for','with','by','from',
-  'i','you','he','she','it','we','they','me','him','her','us','them',
-  'über','unter','vor','nach','bei','mit','zu','aus','für','auf','an','ab','als','am','im','um','von','zum','zur',
-])
-
-function extractTerms(text: string): Set<string> {
-  const terms = new Set<string>()
-  const words = text.toLowerCase().replace(/[^a-zäöüß0-9\s-]/g, ' ').split(/\s+/)
-  for (const w of words) {
-    if (w.length >= 3 && !STOPWORDS.has(w)) terms.add(w)
-  }
-  return terms
-}
-
-function scoreClip(clip: ClipRow, terms: Set<string>, drFunction: string): number {
-  let score = 0
-  const clipText = [
-    clip.description || '',
-    (clip.tags || []).join(' '),
-    clip.mood || '',
-    clip.setting || '',
-    clip.filename || '',
-  ].join(' ').toLowerCase()
-  for (const term of terms) {
-    if (clipText.includes(term)) score += 2
-    // Partial match (substring root) counts half
-    else if (term.length >= 5 && clipText.includes(term.slice(0, -1))) score += 1
-  }
-  // DR-function alignment bonus (soft — still include even if mismatch)
-  if (clip.dr_function && drFunction && clip.dr_function.toUpperCase() === drFunction.toUpperCase()) score += 1
-  // Slight random tiebreaker for diversity when many clips tie
-  score += Math.random() * 0.5
-  return score
 }
 
 function extractMatchedIds(raw: string): number[] {
@@ -247,19 +208,35 @@ For each segment, return:
 
 Return JSON: {"lines": [{"line_number": 1, "text": "...", "text_en": "...", "dr_function": "HOOK", "search_tags": ["tag1","tag2"]}, ...]}${learningsContext}`
 
-  const splitResp = await callKimi(splitPrompt, 8000)
+  // Splitting gets a small thinking budget for nuance
+  const splitResp = await callLLM(splitPrompt, 8000, 512)
   const segments = extractSegments(splitResp.content)
   if (!segments.length) {
     return NextResponse.json({
-      error: 'Split failed — Kimi returned unparseable output',
+      error: 'Split failed — Gemini returned unparseable output',
       debug: splitResp.debug,
       raw: splitResp.content.slice(0, 600) || '(empty)'
     }, { status: 500 })
   }
 
   // ====== PHASE 2: MATCH CLIPS PER SEGMENT (parallel) ======
-  // Pre-filter clips per segment via cheap text scoring, send only top-50 to Kimi
-  const PREFILTER_SIZE = 50
+  // Gemini 2.5 Flash has 1M context — send full shuffled catalog, let the model pick best
+  const shuffledAll = [...allClips]
+  for (let i = shuffledAll.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[shuffledAll[i], shuffledAll[j]] = [shuffledAll[j], shuffledAll[i]]
+  }
+  const fullCatalog = shuffledAll.map(c => ({
+    id: c.id,
+    desc: c.description?.substring(0, 200),
+    dr: c.dr_function,
+    tags: (c.tags || []).slice(0, 7).join(', '),
+    mood: c.mood,
+    setting: c.setting,
+    person: c.has_person,
+    product: c.has_product,
+  }))
+  const fullCatalogJson = JSON.stringify(fullCatalog)
 
   const matchPromises = segments.map(async (seg, idx) => {
     const prev = segments[idx - 1]
@@ -268,27 +245,6 @@ Return JSON: {"lines": [{"line_number": 1, "text": "...", "text_en": "...", "dr_
       prev ? `PREVIOUS LINE: "${prev.text}"` : '',
       next ? `NEXT LINE: "${next.text}"` : '',
     ].filter(Boolean).join('\n')
-
-    // Score clips by term overlap with segment text + tags
-    const terms = extractTerms(seg.text + ' ' + seg.search_tags.join(' ') + ' ' + (seg.text_en || ''))
-    const scored = allClips.map(c => ({ clip: c, score: scoreClip(c, terms, seg.dr_function) }))
-    scored.sort((a, b) => b.score - a.score)
-    const shortlist = scored.slice(0, PREFILTER_SIZE).map(s => s.clip)
-    // Shuffle shortlist to reduce position bias in Kimi's picks
-    for (let i = shortlist.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1))
-      ;[shortlist[i], shortlist[j]] = [shortlist[j], shortlist[i]]
-    }
-    const catalog = shortlist.map(c => ({
-      id: c.id,
-      desc: c.description?.substring(0, 200),
-      dr: c.dr_function,
-      tags: (c.tags || []).slice(0, 7).join(', '),
-      mood: c.mood,
-      setting: c.setting,
-      person: c.has_person,
-      product: c.has_product,
-    }))
 
     const prompt = `You are a UGC direct-response video ad editor picking B-roll clips for ONE script segment.${productHeader}
 
@@ -309,12 +265,13 @@ UGC STYLE — CRITICAL:
 - NEVER studios, TV shows, news broadcasts, stages, game shows, studio audiences.
 
 ${productPrompt ? 'PRODUCT-SPECIFIC MATCHING HINTS:\n' + productPrompt + '\n' : ''}
-SHORTLISTED CLIPS (${catalog.length} candidates pre-filtered for relevance):
-${JSON.stringify(catalog)}
+CLIP LIBRARY (${fullCatalog.length} clips):
+${fullCatalogJson}
 
 Return JSON: {"matched_clip_ids": [id1, id2, id3, id4, id5]}${learningsContext}`
 
-    const { content, debug } = await callKimi(prompt, 2000)
+    // Matching with no thinking — fast parallel picks from pre-filtered shortlist
+    const { content, debug } = await callLLM(prompt, 2000, 0)
     const ids = extractMatchedIds(content)
     if (ids.length === 0) {
       console.error(`Match failed seg ${seg.line_number}: debug=${debug}, raw=${content.slice(0, 200)}`)
